@@ -1,0 +1,30 @@
+# media.xxxx.com — Caddy reverse proxy for the media endpoint（自动 HTTPS）
+#
+# 媒体文件在磁盘上是密文（见 internal/crypt），只有后端能解密。因此不要把
+# /media 指向文件服务器，而是代理到后端 `/media/` 路由。
+#
+# 对应 nginx 示例 assets/nginx/media.domain.example.conf 的 Caddy 版。
+# Caddy 会自动申请/续期 Let's Encrypt 证书并重定向 HTTP→HTTPS，无需手动配 TLS。
+#
+# 用法：
+#   1. 把下面的站点块写入服务器 /etc/caddy/Caddyfile（或 conf.d/*.caddy）
+#   2. 确保 media.xxxx.com 的 DNS A/AAAA 记录指向服务器，且开放 80/443
+#   3. 把 reverse_proxy 目标改为服务器上 app.port 的地址
+#   4. systemctl reload caddy  (或 caddy reload --config /etc/caddy/Caddyfile)
+#
+# 再在 conf.toml 里设置 resources.media-url = "https://media.xxxx.com"，
+# 前端就会用这个域名拼媒体 URL。
+
+media.xxxx.com {
+	encode zstd gzip
+
+	handle {
+		rewrite * /media{uri}
+		reverse_proxy 127.0.0.1:8080
+	}
+}
+
+# ── 如果不想用独立域名 ──
+#
+# 主站 Caddyfile 里的 `handle /media/* { reverse_proxy 127.0.0.1:8080 }`
+# 已经会把 /media 代理到后端，无需额外配置。

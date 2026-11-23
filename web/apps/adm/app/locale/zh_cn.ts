@@ -1,0 +1,73 @@
+import zh from '@natholdallas/i18n/locale/zh_cn'
+import { zhHans as $vuetify } from 'vuetify/locale'
+
+export default {
+  $vuetify,
+  ...zh,
+
+  'app.name': 'codemgr',
+
+  'admin': '管理员',
+  'admin.username': '用户名',
+  'admin.password': '密码',
+  'admin.desc': '管理管理员账号',
+
+  'user': '用户',
+  'user.email': '邮箱',
+  'user.username': '用户名',
+  'user.password': '密码',
+  'user.desc': '管理用户账号',
+
+  'reset.password': '重置密码',
+  'reset.password.desc': '新密码为随机生成，请复制并妥善保存：',
+
+  'locale.en.us': '英语',
+  'locale.zh.cn': '简体中文',
+
+  'urls.index': '首页',
+  'urls.admin': '管理员账号管理',
+  'urls.user': '用户管理',
+  'urls.media': '媒体管理',
+  'urls.settings': '设置',
+  'urls.entrance': '登录',
+
+  'settings.profile': '个人信息',
+  'settings.profile.desc': '修改您的账号信息',
+  'settings.username': '用户名',
+  'settings.no.username': '未设置用户名',
+  'settings.password': '重置密码',
+  'settings.password.old': '当前密码',
+  'settings.password.new': '新密码',
+  'settings.password.desc': '修改您的登录密码',
+  'settings.theme': '主题',
+  'settings.theme.desc': '选择应用外观',
+  'settings.theme.system': '系统',
+  'settings.theme.dark': '深色',
+  'settings.theme.light': '浅色',
+  'settings.locale': '语言',
+  'settings.locale.desc': '选择您的首选语言',
+  'settings.desc': '管理您的账号、安全与偏好设置',
+
+  // media
+  'media.desc': '管理平台上传的静态资源',
+  'media.preview': '预览',
+  'media.name': '文件名',
+  'media.kind': '类型',
+  'media.size': '大小',
+  'media.kind.image': '图片',
+  'media.kind.video': '视频',
+  'media.kind.file': '文件',
+  'upload': '上传',
+  'open': '打开',
+  'err.invalid.media': '无效的媒体文件',
+  'err.upload.failed': '上传失败',
+
+  'dashboard.title': '仪表盘',
+  'dashboard.total.admins': '管理员总数',
+  'dashboard.total.users': '用户总数',
+  'dashboard.total.vaults': '保险箱总数',
+  'dashboard.total.vault.bytes': '保险箱存储',
+  'user.avatar': '头像',
+  'err.media.in.use': '该文件正在被用作头像，无法删除',
+  'err.too.many.requests': '请求过于频繁，请稍后重试',
+}

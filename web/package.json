@@ -1,0 +1,21 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm -r --no-bail run lint",
+    "lint:fix": "pnpm -r --no-bail run lint:fix",
+    "gen": "pnpm -F adm -F usr -F download --parallel generate",
+    "gen:api": "pnpm --dir packages/apiclient exec alova gen -f"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@12.21.0",
+  "dependencies": {
+    "@sdk/apiclient": "workspace:^",
+    "prettier": "^3.9.10"
+  }
+}

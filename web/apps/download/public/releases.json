@@ -1,0 +1,19 @@
+{
+  "version": "0.1.0",
+  "releasedAt": "2026-11-23T12:37:50.949Z",
+  "webUrl": "https://codemgr.hnath.club",
+  "files": [
+    {
+      "name": "Codemgr Vault_0.1.0_amd64.AppImage",
+      "url": "/downloads/Codemgr%20Vault_0.1.0_amd64.AppImage",
+      "size": 114403832,
+      "sha256": "0763961e5dba1b45d430553d6ca9002108d2e8f0ec361b3e68a042f2c2d0ab20"
+    },
+    {
+      "name": "Codemgr Vault_0.1.0_amd64.deb",
+      "url": "/downloads/Codemgr%20Vault_0.1.0_amd64.deb",
+      "size": 4334998,
+      "sha256": "2dc8466ec92ce08137c1bf9beb85b6792ba363701014e6eae1d22b531c9bc8bc"
+    }
+  ]
+}

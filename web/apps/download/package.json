@@ -1,0 +1,37 @@
+{
+  "name": "download",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate --dotenv .env.production",
+    "generate:dev": "nuxt generate",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.41.0",
+    "@natholdallas/i18n": "workspace:^",
+    "@natholdallas/infra": "workspace:^",
+    "@natholdallas/shadcn": "workspace:^",
+    "@vueuse/core": "^14.4.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "reka-ui": "^2.10.3",
+    "tailwind-merge": "^3.6.0",
+    "vue-sonner": "^2.0.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.1",
+    "nuxt": "^4.5.2",
+    "typescript": "^6.0.3",
+    "vue": "^3.5.42",
+    "vue-router": "^5.3.1",
+    "vue-tsc": "^3.3.11"
+  }
+}

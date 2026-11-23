@@ -1,0 +1,18 @@
+/bin
+/logs
+/media
+/conf.toml
+/conf.toml.example
+/docs
+
+# local databases / scratch files
+*.db
+*.sqlite
+
+# local machine / editor
+.DS_Store
+.idea/
+.vscode/
+
+# deploy script holds real domains and SSH targets
+/main.sh
