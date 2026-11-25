@@ -41,9 +41,10 @@ func ListAdmin(c fiber.Ctx) error {
 	if err != nil {
 		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
 	}
-	v := orms.Q[db.Admin](db.Tx).
-		Scopes(q.Sorter.Scope).
-		IPaginate(q.Pagination)
+	v, err := internal.Paginate(orms.Q[db.Admin](db.Tx), q.Sorter, q.Pagination)
+	if err != nil {
+		return &fext.Fail{Code: internal.OperationFailed, System: err}
+	}
 	return c.JSON(v)
 }
 

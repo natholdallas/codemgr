@@ -40,9 +40,10 @@ func ListMedia(c fiber.Ctx) error {
 	if err != nil {
 		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
 	}
-	v := orms.QE[db.Media](db.Tx).
-		Scopes(q.Sorter.Scope).
-		IPaginate(q.Pagination)
+	v, err := internal.Paginate(orms.QE[db.Media](db.Tx), q.Sorter, q.Pagination)
+	if err != nil {
+		return &fext.Fail{Code: internal.OperationFailed, System: err}
+	}
 	return c.JSON(v)
 }
 

@@ -23,6 +23,25 @@ export default defineNuxtConfig({
     '~/assets/transition.css',
     '~/assets/utilities.css',
   ],
+
+  // Tailwind 4 emits modern CSS (`oklch(from …)` relative colors, nested
+  // `calc()` inside `var()` fallbacks) that cssnano's postcss-calc transform
+  // cannot parse; the parser only logs warnings and leaves the rule untouched.
+  // Disable just that transform — the rest of the minification stays on.
+  postcss: {
+    plugins: {
+      cssnano: { preset: ['default', { calc: false }] },
+    },
+  },
+
+  vite: {
+    build: {
+      // Rolldown reports per-plugin build time on every production build; it is
+      // diagnostic output, not a problem in this workspace.
+      rolldownOptions: { checks: { pluginTimings: false } },
+    },
+  },
+
   modules: [
     // modules
     '@natholdallas/i18n',
@@ -111,6 +130,17 @@ export default defineNuxtConfig({
     // Off on purpose: the release installers live under public/downloads and are
     // already compressed — gzipping them only doubles the deploy payload.
     compressPublicAssets: false,
+    // Upstream nitro/i18n/icon runtime graphs have circular imports; the static
+    // preset resolves them fine and Nitro's default handler omits them. Nitro's
+    // h3 bridge also re-exports `H3Error`/`H3Event`/`deleteCookie` from the h3
+    // v1 external that this preset never calls, which Rolldown flags as unused.
+    rollupConfig: {
+      onwarn(warning, warn) {
+        if (warning.code === 'CIRCULAR_DEPENDENCY') return
+        if (warning.code === 'UNUSED_EXTERNAL_IMPORT' && /H3Error|deleteCookie/.test(warning.message)) return
+        warn(warning)
+      },
+    },
     output: {
       dir: 'dist',
       publicDir: 'dist/public',
