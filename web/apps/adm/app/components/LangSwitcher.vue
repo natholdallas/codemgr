@@ -1,27 +1,24 @@
 <script setup lang="ts">
 import { Locale, locales } from '~/lib/locale'
 
-const showLang = shallowRef(false)
+const { locale } = useI18n()
 </script>
 
 <template>
-  <div>
-    <VBtn icon="mdi-web" variant="flat" @click="showLang = true" />
+  <VMenu location="bottom end">
+    <template #activator="{ props }">
+      <VBtn v-bind="props" icon="mdi-translate" variant="text" :title="$t('switch.locale')" />
+    </template>
 
-    <VxModal v-model="showLang" :title="$t('switch.locale')">
-      <VBtn
-        v-for="i in Locale"
-        :key="i"
-        block
-        flat
-        :text="$t(locales[i].k)"
-        @click="
-          () => {
-            $i18n.setLocale(i)
-            showLang = false
-          }
-        "
+    <VList density="comfortable" min-width="200">
+      <VListItem
+        v-for="l in Object.values(Locale)"
+        :key="l"
+        :title="$t(locales[l].k)"
+        :active="locale === l"
+        :append-icon="locale === l ? 'mdi-check' : undefined"
+        @click="$i18n.setLocale(l)"
       />
-    </VxModal>
-  </div>
+    </VList>
+  </VMenu>
 </template>

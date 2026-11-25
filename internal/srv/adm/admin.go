@@ -188,6 +188,12 @@ func RemoveAdmin(c fiber.Ctx) error {
 	return nil
 }
 
+// TargetPasswordIn carries an optional replacement password. An empty value
+// means "generate a random password".
+type TargetPasswordIn struct {
+	Password string `json:"password" validate:"omitempty,min=4,max=20"`
+} //	@name	AdmTargetPasswordIn
+
 type ResetAdminPasswordOut struct {
 	Password string `json:"password"`
 } //	@name	AdmResetAdminPassword
@@ -195,22 +201,30 @@ type ResetAdminPasswordOut struct {
 // ResetAdminPassword godoc
 //
 //	@Summary		Reset Admin password
-//	@Description	Reset an admin password to a new random one, returned once
+//	@Description	Reset an admin password to the given one, or to a new random one when the body password is empty. The resulting password is returned once
 //	@Tags			admAdmin
 //	@ID				admResetAdminPassword
 //	@Accept			json
 //	@Produce		json
 //	@Security		ApiKeyAuth
-//	@Param			id	path		int	true	"Admin ID"
-//	@Success		200	{object}	ResetAdminPasswordOut
-//	@Failure		400	{object}	Fail
+//	@Param			id		path		int					true	"Admin ID"
+//	@Param			body	body		TargetPasswordIn	true	"Password object (empty password = random)"
+//	@Success		200		{object}	ResetAdminPasswordOut
+//	@Failure		400		{object}	Fail
 //	@Router			/adm/api/v1/admin/{id}/reset-password [post]
 func ResetAdminPassword(c fiber.Ctx) error {
 	id, err := internal.ParseID(c)
 	if err != nil {
 		return err
 	}
-	plain := rands.Char(20)
+	d, err := fext.BodyVarser[TargetPasswordIn](c)
+	if err != nil {
+		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
+	}
+	plain := d.Password
+	if plain == "" {
+		plain = rands.Char(20)
+	}
 	hash, err := pwd.Hash(plain)
 	if err != nil {
 		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}

@@ -33,6 +33,7 @@ export default defineNuxtConfig({
     '~/assets/styles/css/fonts.css',
     '~/assets/styles/css/transition.css',
     '~/assets/styles/css/utilities.css',
+    '~/assets/styles/css/admin.css',
   ],
   modules: [
     // modules
@@ -43,6 +44,74 @@ export default defineNuxtConfig({
     '@natholdallas/pinia',
     '@natholdallas/tauri',
   ],
+  // Deep-merged over the shared module's `moduleDependencies` defaults.
+  vuetify: {
+    vuetifyOptions: {
+      theme: {
+        defaultTheme: 'system',
+        utilities: true,
+        themes: {
+          light: {
+            dark: false,
+            colors: {
+              'background': '#F5F6FA',
+              'surface': '#FFFFFF',
+              'surface-bright': '#FFFFFF',
+              'surface-light': '#F8FAFC',
+              'surface-variant': '#EEF1F7',
+              'on-surface': '#0F172A',
+              'on-surface-variant': '#475569',
+              'on-background': '#0F172A',
+              'primary': '#4F46E5',
+              'primary-darken-1': '#4338CA',
+              'on-primary': '#FFFFFF',
+              'secondary': '#0EA5E9',
+              'secondary-darken-1': '#0284C7',
+              'on-secondary': '#FFFFFF',
+              'accent': '#7C3AED',
+              'error': '#E11D48',
+              'on-error': '#FFFFFF',
+              'info': '#0284C7',
+              'on-info': '#FFFFFF',
+              'success': '#059669',
+              'on-success': '#FFFFFF',
+              'warning': '#D97706',
+              'on-warning': '#FFFFFF',
+            },
+          },
+          dark: {
+            dark: true,
+            colors: {
+              'background': '#080B14',
+              'surface': '#0F1526',
+              'surface-bright': '#16203A',
+              'surface-light': '#0C1220',
+              'surface-variant': '#1B2338',
+              'on-surface': '#E2E8F0',
+              'on-surface-variant': '#94A3B8',
+              'on-background': '#E2E8F0',
+              'primary': '#818CF8',
+              'primary-darken-1': '#6366F1',
+              'on-primary': '#0B1020',
+              'secondary': '#38BDF8',
+              'secondary-darken-1': '#0EA5E9',
+              'on-secondary': '#0B1020',
+              'accent': '#A78BFA',
+              'error': '#FB7185',
+              'on-error': '#0B1020',
+              'info': '#38BDF8',
+              'on-info': '#0B1020',
+              'success': '#34D399',
+              'on-success': '#0B1020',
+              'warning': '#FBBF24',
+              'on-warning': '#0B1020',
+            },
+          },
+        },
+      },
+    },
+  },
+
   imports: {
     presets: [
       {

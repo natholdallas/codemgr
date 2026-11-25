@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import type { Media } from '~/lib/sdk'
-import { Apis } from '~/lib/sdk'
+import { useDayjs } from '#dayjs'
+import { Apis, Media } from '~/lib/sdk'
 
 definePageMeta({
   name: 'media',
   middleware: 'auth',
 })
 
+const SITE_TZ = 'Asia/Shanghai'
+const day = useDayjs()
+
 const app = useAppStore()
 app.$load()
 
+const { smAndDown } = useVDisplay()
+const { t } = useI18n()
 const queries = ref({ page: 1, size: 20, column: 'created_at', desc: true })
-const { open } = useDialog()
+
 const { loading, data, send } = useRequest(
   () =>
     Apis.Media.list({
@@ -30,7 +35,10 @@ const { loading: removing, send: remove } = useRequest(
   {
     immediate: false,
   },
-).onSuccess(send)
+).onSuccess(() => {
+  removeOpen.value = false
+  send()
+})
 
 const { loading: uploading, send: upload } = useRequest(
   (body: { file: File; kind: string }) =>
@@ -43,6 +51,12 @@ const { loading: uploading, send: upload } = useRequest(
 ).onSuccess(send)
 
 const fileInput = ref<HTMLInputElement>()
+const removeOpen = ref(false)
+const target = ref<Media>(inst(Media))
+
+function openUrl(url: string) {
+  window.open(url, '_blank', 'noopener')
+}
 
 function onPick(e: Event) {
   const el = e.target as HTMLInputElement
@@ -54,10 +68,6 @@ function onPick(e: Event) {
   el.value = ''
 }
 
-function openUrl(url: string) {
-  window.open(url, '_blank', 'noopener')
-}
-
 function formatSize(bytes: number): string {
   if (!bytes) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
@@ -65,81 +75,100 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
+function formatTime(v?: string): string {
+  if (!v) return '-'
+  return day(v).tz(SITE_TZ).format('YYYY-MM-DD HH:mm:ss')
+}
+
+const headers = computed(() => {
+  const hidden = smAndDown.value ? ['id', 'created_at'] : []
+  return [
+    { title: t('model.id'), key: 'id', sortable: true },
+    { title: t('media.preview'), key: 'url', sortable: false },
+    { title: t('media.name'), key: 'name', sortable: false },
+    { title: t('media.kind'), key: 'kind', sortable: true },
+    { title: t('media.size'), key: 'size', sortable: true },
+    { title: t('model.createdat'), key: 'created_at', sortable: true },
+    { key: 'actions', sortable: false, align: 'end' as const },
+  ].filter((h) => !hidden.includes(h.key))
+})
+
+function askRemove(item: Media) {
+  target.value = item
+  removeOpen.value = true
+}
+
 watch(queries, send, { deep: true })
 </script>
 
 <template>
-  <ComCtl :loading="uploading" class="flex flex-col p-4">
-    <div class="flex size-full flex-1 flex-col gap-4">
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-4">
-          <div class="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <VIcon icon="mdi-image-multiple" size="28" />
-          </div>
-          <div>
-            <h1 class="text-2xl font-bold leading-tight">{{ $t('urls.media') }}</h1>
-            <p class="text-sm opacity-70">{{ $t('media.desc') }}</p>
-          </div>
-        </div>
+  <ComCtl :loading="[loading, uploading, removing]" class="flex flex-col gap-4 p-4 lg:p-6">
+    <AppPageHeader icon="mdi-image-multiple" :title="$t('urls.media')" :description="$t('media.desc')" :count="data.total">
+      <template #actions>
+        <VBtn color="primary" prepend-icon="mdi-upload" class="text-none" @click="fileInput?.click()">
+          {{ $t('upload') }}
+        </VBtn>
+        <input ref="fileInput" type="file" class="hidden" @change="onPick" >
+      </template>
+    </AppPageHeader>
 
-        <div class="flex items-center gap-3">
-          <VChip prepend-icon="mdi-image-multiple" variant="tonal" class="hidden sm:inline-flex" rounded>
-            {{ $t('total') }}: {{ data.total }}
-          </VChip>
-          <VBtn prepend-icon="mdi-upload" color="primary" @click="fileInput?.click()">
-            {{ $t('upload') }}
-          </VBtn>
-          <input ref="fileInput" type="file" class="hidden" @change="onPick">
-        </div>
-      </div>
-
-      <VCard border rounded="xl" class="flex-1 min-h-0 overflow-hidden">
-        <VDataTableServer
-          v-model:items-per-page="queries.size"
-          v-model:page="queries.page"
-          class="h-full"
-          :headers="[
-            { title: $t('model.id'), key: 'id', sortable: true },
-            { title: $t('media.preview'), key: 'url', sortable: false },
-            { title: $t('media.name'), key: 'name', sortable: false },
-            { title: $t('media.kind'), key: 'kind', sortable: true },
-            { title: $t('media.size'), key: 'size', sortable: true },
-            { title: $t('model.createdat'), key: 'created_at', sortable: true },
-            { key: 'actions' },
-          ]"
-          :items="data.content"
-          :items-length="data.total"
-          :loading="loading || removing"
-          @update:options="({ sortBy }) => vtables.sort(queries, sortBy)"
+    <VCard border rounded="lg" class="flex-1 min-h-0 overflow-hidden">
+      <VDataTableServer
+        v-model:items-per-page="queries.size"
+        v-model:page="queries.page"
+        :headers="headers"
+        :items="data.content"
+        :items-length="data.total"
+        :items-per-page-options="[10, 20, 50, 100]"
+        :loading="loading || removing"
+        :no-data-text="$t('no.data')"
+        class="adm-table"
+        density="comfortable"
+        hover
+        @update:options="({ sortBy }) => vtables.sort(queries, sortBy)"
+      >
+        <template #[`item.id`]="{ item }"
+          ><span class="tabular-nums">{{ item.id }}</span></template
         >
-          <template #item.url="{ item }">
-            <div class="flex items-center">
-              <VAvatar size="40" rounded="lg" :color="item.kind === 'image' ? 'primary' : 'surface-variant'">
-                <VImg v-if="item.kind === 'image'" :src="app.mediaUrl(item.url)" :alt="item.name" cover />
-                <VIcon v-else icon="mdi-file" />
-              </VAvatar>
-            </div>
-          </template>
-          <template #item.size="{ item }">
-            <span class="text-sm">{{ formatSize((item as Media).size) }}</span>
-          </template>
-          <template #item.kind="{ item }">
-            <VChip :color="item.kind === 'image' ? 'primary' : item.kind === 'video' ? 'info' : undefined" size="small" variant="tonal">
-              {{ $t(`media.kind.${item.kind}`) }}
-            </VChip>
-          </template>
-          <template #item.actions="{ item }">
-            <div class="flex items-center justify-end gap-1">
-              <VxActionBtn icon="mdi-open-in-new" :tooltip="$t('open')" @click="openUrl(app.mediaUrl(item.url))" />
-              <VxActionBtn
-                icon="mdi-delete"
-                :tooltip="$t('remove')"
-                @click="open({ confirm: () => remove(item.id) })"
-              />
-            </div>
-          </template>
-        </VDataTableServer>
-      </VCard>
-    </div>
+        <template #[`item.url`]="{ item }">
+          <VAvatar size="40" rounded="lg" color="surface-variant">
+            <VxImg v-if="item.kind === 'image'" :src="app.mediaUrl(item.url)" :alt="item.name" cover />
+            <VIcon v-else icon="mdi-file" />
+          </VAvatar>
+        </template>
+        <template #[`item.name`]="{ item }">
+          <span class="text-body-medium d-inline-block text-truncate" style="max-width: 16rem">{{ item.name }}</span>
+        </template>
+        <template #[`item.kind`]="{ item }">
+          <VChip size="small" variant="tonal" :color="item.kind === 'image' ? 'primary' : item.kind === 'video' ? 'info' : undefined">
+            {{ $t('media.kind.' + item.kind) }}
+          </VChip>
+        </template>
+        <template #[`item.size`]="{ item }">
+          <span class="text-body-medium tabular-nums">{{ formatSize(item.size) }}</span>
+        </template>
+        <template #[`item.created_at`]="{ item }">
+          <span class="text-body-medium text-medium-emphasis">{{ formatTime(item.created_at) }}</span>
+        </template>
+        <template #[`item.actions`]="{ item }">
+          <div class="flex items-center justify-end gap-1">
+            <AppIconBtn icon="mdi-open-in-new" :tooltip="$t('open')" @click="openUrl(app.mediaUrl(item.url))" />
+            <AppIconBtn icon="mdi-delete" tone="error" :tooltip="$t('remove')" @click="askRemove(item)" />
+          </div>
+        </template>
+      </VDataTableServer>
+    </VCard>
+
+    <AppModal
+      v-model="removeOpen"
+      :title="$t('dialog')"
+      :description="$t('dialog.desc')"
+      icon="mdi-delete"
+      tone="error"
+      :confirm-text="$t('remove')"
+      :loading="removing"
+      @cancel="removeOpen = false"
+      @confirm="remove(target.id)"
+    />
   </ComCtl>
 </template>

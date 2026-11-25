@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Locale, locales } from '~/lib/locale'
-import { Apis, Admin, ProfileIn, ResetPasswordIn } from '~/lib/sdk'
+import { Apis, ProfileIn, ResetPasswordIn } from '~/lib/sdk'
 import type { ThemeMode } from '~/stores/conf'
 
 definePageMeta({
@@ -11,26 +11,38 @@ definePageMeta({
 const conf = useConfStore()
 const { locale: currentLocale } = useI18n()
 
-const {
-  loading: finding,
-  data: admin,
-  send: findAdmin,
-} = useRequest(Apis.Profile.find, {
-  initialData: inst(Admin),
-}).onSuccess(({ data }) => {
-  profile.value.username = data.username
-})
-const profile = ref(inst(ProfileIn, { username: '' }))
+// One shared profile store drives the settings card, the app bar and the
+// sidebar, so an avatar upload is reflected everywhere without a reload.
+const store = useProfileStore()
+const { profile, loading: finding } = storeToRefs(store)
+store.$load()
+
+const editOpen = ref(false)
+const profileForm = ref(inst(ProfileIn, { username: '' }))
+const passwordOpen = ref(false)
 const password = ref(inst(ResetPasswordIn))
+
+// Seed the form when the dialog opens, not on every store change: a background
+// profile refresh must not overwrite what the user is typing.
+function openEdit() {
+  profileForm.value = inst(ProfileIn, { username: profile.value.username || '' })
+  editOpen.value = true
+}
+
+function openPassword() {
+  password.value = inst(ResetPasswordIn)
+  passwordOpen.value = true
+}
 
 const { loading: updatingProfile, send: sendProfile } = useRequest(
   () =>
     Apis.Profile.update({
-      data: { username: profile.value.username || '' },
+      data: { username: profileForm.value.username || '' },
     }),
   { immediate: false },
 ).onSuccess(() => {
-  findAdmin()
+  editOpen.value = false
+  store.$load(true)
 })
 const { loading: updatingPassword, send: sendPassword } = useRequest(
   () =>
@@ -40,7 +52,10 @@ const { loading: updatingPassword, send: sendPassword } = useRequest(
   {
     immediate: false,
   },
-)
+).onSuccess(() => {
+  passwordOpen.value = false
+  password.value = inst(ResetPasswordIn)
+})
 
 const themeOptions: { title: string; value: ThemeMode; icon: string }[] = [
   { title: 'settings.theme.system', value: 'system', icon: 'mdi-monitor' },
@@ -56,92 +71,95 @@ const localeOptions = Object.values(Locale).map((l) => ({
 
 <template>
   <ComCtl :loading="finding" class="p-4 lg:p-6" scroll>
-    <div class="mx-auto max-w-3xl flex flex-col gap-4">
-      <VCard border rounded="xl" class="overflow-hidden">
-        <div class="flex items-center gap-4 border-b border-on-surface/10 px-6 py-5">
-          <VAvatar :color="admin.username ? 'primary' : 'surface-variant'" size="52" rounded="lg">
-            <span class="text-lg font-bold">{{ admin.username?.slice(0, 1).toUpperCase() || '?' }}</span>
-          </VAvatar>
-          <div class="min-w-0">
-            <p class="truncate text-lg font-semibold">{{ admin.username || $t('settings.no.username') }}</p>
-            <p class="text-sm opacity-70">#{{ admin.id }}</p>
-          </div>
-        </div>
-        <VCardText>
-          <FormProfile v-model="profile" :loading="updatingProfile" @submit="sendProfile" />
-        </VCardText>
-      </VCard>
+    <div class="mx-auto flex max-w-6xl flex-col gap-6">
+      <AppPageHeader icon="mdi-cog" :title="$t('urls.settings')" :description="$t('settings.desc')" />
 
-      <VCard border rounded="xl" class="overflow-hidden">
-        <div class="flex items-center gap-3 px-6 pt-5">
-          <div class="flex size-10 items-center justify-center rounded-xl bg-warning/10 text-warning">
-            <VIcon icon="mdi-lock-outline" size="22" />
-          </div>
-          <div>
-            <VCardTitle class="px-0 text-base">{{ $t('settings.password') }}</VCardTitle>
-            <VCardSubtitle class="px-0">{{ $t('settings.password.desc') }}</VCardSubtitle>
-          </div>
-        </div>
-        <VCardText>
-          <FormPasswd v-model="password" :loading="updatingPassword" @submit="sendPassword" />
-        </VCardText>
-      </VCard>
-
-      <div class="grid gap-4 md:grid-cols-2">
-        <VCard border rounded="xl" class="overflow-hidden">
-          <div class="flex items-center gap-3 px-6 pt-5">
-            <div class="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <VIcon icon="mdi-theme-light-dark" size="22" />
-            </div>
-            <div>
-              <VCardTitle class="px-0 text-base">{{ $t('settings.theme') }}</VCardTitle>
-              <VCardSubtitle class="px-0">{{ $t('settings.theme.desc') }}</VCardSubtitle>
-            </div>
-          </div>
-          <VCardText>
-            <div class="flex w-full gap-1 rounded-md p-1">
-              <VBtn
-                v-for="opt in themeOptions"
-                :key="opt.value"
-                :color="conf.theme === opt.value ? 'primary' : undefined"
-                :variant="conf.theme === opt.value ? 'flat' : 'text'"
-                class="flex-1"
-                @click="conf.theme = opt.value"
-              >
-                <VIcon class="mr-1" :icon="opt.icon" size="18" />
-                <span class="text-xs">{{ $t(opt.title) }}</span>
-              </VBtn>
-            </div>
+      <div class="grid gap-6 lg:grid-cols-2">
+        <VCard border rounded="lg" class="flex flex-col">
+          <AppCardHeader icon="mdi-account" :title="$t('settings.profile')" :description="$t('settings.profile.desc')" />
+          <VCardText class="flex flex-1 flex-col justify-between gap-5 p-5">
+            <AppAvatarUpload
+              v-model="profile.avatar"
+              :name="profile.username"
+              :label="profile.username || $t('settings.no.username')"
+              :sublabel="$t('role.admin')"
+            />
+            <VBtn variant="tonal" color="primary" prepend-icon="mdi-pencil" class="text-none font-weight-semibold self-start" @click="openEdit">
+              {{ $t('update') }}
+            </VBtn>
           </VCardText>
         </VCard>
 
-        <VCard border rounded="xl" class="overflow-hidden">
-          <div class="flex items-center gap-3 px-6 pt-5">
-            <div class="flex size-10 items-center justify-center rounded-xl bg-info/10 text-info">
-              <VIcon icon="mdi-translate" size="22" />
+        <VCard border rounded="lg" class="flex flex-col">
+          <AppCardHeader icon="mdi-lock" :title="$t('settings.password')" :description="$t('settings.password.desc')" tone="warning" />
+          <VCardText class="flex flex-1 flex-col justify-between gap-5 p-5">
+            <div class="flex items-center gap-3 rounded-lg border border-on-surface/10 bg-surface-variant px-4 py-3">
+              <VIcon icon="mdi-form-textbox-password" size="20" class="text-medium-emphasis" />
+              <span class="text-body-medium tracking-widest text-medium-emphasis">••••••••••</span>
             </div>
-            <div>
-              <VCardTitle class="px-0 text-base">{{ $t('settings.locale') }}</VCardTitle>
-              <VCardSubtitle class="px-0">{{ $t('settings.locale.desc') }}</VCardSubtitle>
-            </div>
-          </div>
-          <VCardText>
-            <div class="flex w-full gap-1 rounded-md p-1">
-              <VBtn
-                v-for="opt in localeOptions"
-                :key="opt.value"
-                :color="currentLocale === opt.value ? 'primary' : undefined"
-                :variant="currentLocale === opt.value ? 'flat' : 'text'"
-                size="small"
-                class="flex-1"
-                @click="$i18n.setLocale(opt.value)"
-              >
-                <span class="text-xs">{{ $t(opt.title) }}</span>
-              </VBtn>
+            <VBtn
+              variant="tonal"
+              color="warning"
+              prepend-icon="mdi-lock-reset"
+              class="text-none font-weight-semibold self-start"
+              @click="openPassword"
+            >
+              {{ $t('reset.password') }}
+            </VBtn>
+          </VCardText>
+        </VCard>
+
+        <VCard border rounded="lg" class="flex flex-col lg:col-span-2">
+          <AppCardHeader icon="mdi-palette" :title="$t('settings.theme')" :description="$t('settings.theme.desc')" tone="info" />
+          <VCardText class="p-5">
+            <div class="grid gap-6 sm:grid-cols-2">
+              <div>
+                <p class="mb-2 text-body-small font-weight-medium text-medium-emphasis">{{ $t('settings.theme') }}</p>
+                <div class="grid grid-cols-1 gap-1 rounded-lg border border-on-surface/10 bg-surface-variant p-1 sm:grid-cols-3">
+                  <VBtn
+                    v-for="opt in themeOptions"
+                    :key="opt.value"
+                    class="text-none"
+                    size="small"
+                    :color="conf.theme === opt.value ? 'primary' : undefined"
+                    :variant="conf.theme === opt.value ? 'flat' : 'text'"
+                    :prepend-icon="opt.icon"
+                    @click="conf.theme = opt.value"
+                  >
+                    {{ $t(opt.title) }}
+                  </VBtn>
+                </div>
+              </div>
+
+              <div>
+                <p class="mb-2 text-body-small font-weight-medium text-medium-emphasis">{{ $t('settings.locale') }}</p>
+                <div class="grid grid-cols-1 gap-1 rounded-lg border border-on-surface/10 bg-surface-variant p-1 sm:grid-cols-2">
+                  <VBtn
+                    v-for="opt in localeOptions"
+                    :key="opt.value"
+                    class="justify-start text-none"
+                    size="small"
+                    :color="currentLocale === opt.value ? 'primary' : undefined"
+                    :variant="currentLocale === opt.value ? 'flat' : 'text'"
+                    :append-icon="currentLocale === opt.value ? 'mdi-check' : undefined"
+                    @click="$i18n.setLocale(opt.value)"
+                  >
+                    {{ $t(opt.title) }}
+                  </VBtn>
+                </div>
+              </div>
             </div>
           </VCardText>
         </VCard>
       </div>
     </div>
+
+    <AppModal v-model="editOpen" :title="$t('settings.profile')" :description="$t('settings.profile.desc')" icon="mdi-account-edit" no-footer>
+      <FormProfile v-model="profileForm" :loading="updatingProfile" :submit-text="$t('update')" @submit="sendProfile" />
+    </AppModal>
+
+    <AppModal v-model="passwordOpen" :title="$t('settings.password')" :description="$t('settings.password.desc')" icon="mdi-lock-reset" no-footer>
+      <FormPasswd v-model="password" :loading="updatingPassword" :submit-text="$t('confirm')" @submit="sendPassword" />
+    </AppModal>
   </ComCtl>
 </template>

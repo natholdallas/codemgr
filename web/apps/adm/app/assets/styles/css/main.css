@@ -23,3 +23,10 @@ body {
     sans-serif;
   font-display: swap;
 }
+
+code,
+pre,
+kbd,
+samp {
+  font-family: 'Monaco', 'Courier New', monospace;
+}

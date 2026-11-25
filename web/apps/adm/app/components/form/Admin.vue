@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import type { AdminIn } from '~/lib/sdk'
 
-defineProps<{
-  loading: boolean
-  submitText?: string
-  readonly?: boolean
-}>()
+withDefaults(
+  defineProps<{
+    loading: boolean
+    submitText?: string
+    readonly?: boolean
+    showPassword?: boolean
+  }>(),
+  { submitText: '', readonly: false, showPassword: true },
+)
 defineEmits<{
   (e: 'submit'): void
 }>()
@@ -14,8 +18,16 @@ const model = defineModel<AdminIn>({ required: true })
 </script>
 
 <template>
-  <VxForm :loading="loading" :readonly="readonly" :submit-text="submitText" @submit="$emit('submit')">
-    <VTextField v-model="model.username" :label="$t('admin.username')" />
-    <VxPasswdField v-model="model.password" :label="$t('admin.password')" />
-  </VxForm>
+  <AppForm :loading="loading" :readonly="readonly" :submit-text="submitText" @submit="$emit('submit')">
+    <VTextField
+      v-model="model.username"
+      autocomplete="off"
+      :label="$t('admin.username')"
+      variant="outlined"
+      density="comfortable"
+      hide-details="auto"
+    />
+    <!-- Updates never change the password; it is reset through its own action. -->
+    <AppPasswordField v-if="showPassword" v-model="model.password" autocomplete="new-password" :label="$t('admin.password')" />
+  </AppForm>
 </template>

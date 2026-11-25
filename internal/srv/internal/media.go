@@ -60,7 +60,7 @@ var kindConfs = map[Kind]kindConf{
 }
 
 // avatarConf is deliberately narrower than KindImage: animated GIFs make poor
-// avatars and the client always uploads a cropped PNG.
+// avatars and the client always uploads a cropped image.
 var avatarConf = kindConf{
 	exts:  []string{".jpg", ".jpeg", ".png", ".webp"},
 	mimes: []string{"image/jpeg", "image/png", "image/webp"},

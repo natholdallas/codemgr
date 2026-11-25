@@ -30,7 +30,9 @@ func Setup(api fiber.Router) {
 	api.Group("/profile", jwt.Middleware).
 		Get("/me", FindProfile).
 		Put("/me", UpdateProfile).
-		Put("/password", ResetPassword)
+		Put("/password", ResetPassword).
+		Post("/avatar", internal.RateLimit(userKey, "adm:avatar", 20, time.Hour), UploadAvatar).
+		Delete("/avatar", DeleteAvatar)
 	api.Group("/user", jwt.Middleware).
 		Get("", ListUser).
 		Get("/:id", FindUser).

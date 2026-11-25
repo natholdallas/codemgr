@@ -6,6 +6,7 @@ import (
 	"github.com/natholdallas/natools4go/fext"
 	"github.com/natholdallas/natools4go/orms"
 	"github.com/natholdallas/natools4go/pwd"
+	"github.com/natholdallas/natools4go/strs"
 
 	"codemgr/internal/auth"
 	"codemgr/internal/db"
@@ -102,4 +103,95 @@ func ResetPassword(c fiber.Ctx) error {
 		log.Warn("revoke refresh tokens: ", err)
 	}
 	return nil
+}
+
+// findAdmin loads the admin row by primary key.
+func findAdmin(id uint) (db.Admin, error) {
+	return orms.First[db.Admin](db.Tx, id)
+}
+
+// UploadAvatar godoc
+//
+//	@Summary		Upload current admin avatar
+//	@Description	Store a cropped avatar image (jpg/png/webp, max 4096x4096) and replace the previous one
+//	@Tags			admProfile
+//	@ID				admUploadAvatar
+//	@Accept			multipart/form-data
+//	@Produce		json
+//	@Security		ApiKeyAuth
+//	@Param			file	formData	file	true	"Avatar image"
+//	@Success		200		{object}	db.Admin
+//	@Failure		400		{object}	Fail
+//	@Router			/adm/api/v1/profile/avatar [post]
+func UploadAvatar(c fiber.Ctx) error {
+	claims := jwt.Claims(c)
+	uid := strs.ParseUint[uint](claims.ID)
+	if uid == 0 {
+		return &fext.Fail{Status: fiber.StatusUnauthorized}
+	}
+	file, err := internal.ParseUploadFile(c)
+	if err != nil {
+		return err
+	}
+	v, err := internal.SaveAvatar(c, file, uid)
+	if err != nil {
+		return err
+	}
+	old, err := findAdmin(uid)
+	if err != nil {
+		if remErr := db.RemoveByID(db.Tx, v.ID); remErr != nil {
+			log.Warn("remove avatar media after lookup failure: ", remErr)
+		}
+		return &fext.Fail{Code: internal.RecordNotFound, Status: fiber.StatusNotFound}
+	}
+	if uerr := orms.UpdatesByID[db.Admin](db.Tx, uid, map[string]any{"avatar": v.URL}); uerr != nil {
+		if remErr := db.RemoveByID(db.Tx, v.ID); remErr != nil {
+			log.Warn("remove avatar media after update failure: ", remErr)
+		}
+		return &fext.Fail{Code: internal.UpdateFailed, System: uerr}
+	}
+	// Drop the previous file only after the new URL is committed, otherwise a
+	// failed update would leave the account without an avatar.
+	internal.RemoveMediaByURL(uid, old.Avatar)
+	p, err := findAdmin(uid)
+	if err != nil {
+		return &fext.Fail{Code: internal.RecordNotFound, Status: fiber.StatusNotFound}
+	}
+	return c.JSON(p)
+}
+
+// DeleteAvatar godoc
+//
+//	@Summary		Remove current admin avatar
+//	@Description	Clear the avatar and delete its media file
+//	@Tags			admProfile
+//	@ID				admDeleteAvatar
+//	@Accept			json
+//	@Produce		json
+//	@Security		ApiKeyAuth
+//	@Success		200	{object}	db.Admin
+//	@Failure		400	{object}	Fail
+//	@Router			/adm/api/v1/profile/avatar [delete]
+func DeleteAvatar(c fiber.Ctx) error {
+	claims := jwt.Claims(c)
+	uid := strs.ParseUint[uint](claims.ID)
+	if uid == 0 {
+		return &fext.Fail{Status: fiber.StatusUnauthorized}
+	}
+	old, err := findAdmin(uid)
+	if err != nil {
+		return &fext.Fail{Code: internal.RecordNotFound, Status: fiber.StatusNotFound}
+	}
+	// Idempotent: a second call must not turn a cleared avatar into an error.
+	if old.Avatar != "" {
+		if uerr := orms.UpdatesByID[db.Admin](db.Tx, uid, map[string]any{"avatar": ""}); uerr != nil {
+			return &fext.Fail{Code: internal.UpdateFailed, System: uerr}
+		}
+		internal.RemoveMediaByURL(uid, old.Avatar)
+	}
+	p, err := findAdmin(uid)
+	if err != nil {
+		return &fext.Fail{Code: internal.RecordNotFound, Status: fiber.StatusNotFound}
+	}
+	return c.JSON(p)
 }

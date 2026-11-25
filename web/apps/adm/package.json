@@ -19,13 +19,15 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@mdi/font": "^7.4.47",
     "@natholdallas/alova": "workspace:^",
     "@natholdallas/i18n": "workspace:^",
     "@natholdallas/infra": "workspace:^",
     "@natholdallas/pinia": "workspace:^",
     "@natholdallas/tauri": "workspace:^",
     "@natholdallas/vuetify": "workspace:^",
-    "@vueuse/core": "^14.4.0"
+    "@vueuse/core": "^14.4.0",
+    "vue-advanced-cropper": "^2.8.9"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

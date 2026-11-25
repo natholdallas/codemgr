@@ -233,22 +233,30 @@ type ResetUserPasswordOut struct {
 // ResetUserPassword godoc
 //
 //	@Summary		Reset User password
-//	@Description	Reset a user password to a new random one, returned once
+//	@Description	Reset a user password to the given one, or to a new random one when the body password is empty. The resulting password is returned once
 //	@Tags			admUser
 //	@ID				admResetUserPassword
 //	@Accept			json
 //	@Produce		json
 //	@Security		ApiKeyAuth
-//	@Param			id	path		int	true	"User ID"
-//	@Success		200	{object}	ResetUserPasswordOut
-//	@Failure		400	{object}	Fail
+//	@Param			id		path		int					true	"User ID"
+//	@Param			body	body		TargetPasswordIn	true	"Password object (empty password = random)"
+//	@Success		200		{object}	ResetUserPasswordOut
+//	@Failure		400		{object}	Fail
 //	@Router			/adm/api/v1/user/{id}/reset-password [post]
 func ResetUserPassword(c fiber.Ctx) error {
 	id, err := internal.ParseID(c)
 	if err != nil {
 		return err
 	}
-	plain := rands.Char(20)
+	d, err := fext.BodyVarser[TargetPasswordIn](c)
+	if err != nil {
+		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
+	}
+	plain := d.Password
+	if plain == "" {
+		plain = rands.Char(20)
+	}
 	hash, err := pwd.Hash(plain)
 	if err != nil {
 		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
