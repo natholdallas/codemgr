@@ -8,7 +8,7 @@ const props = defineProps<{ space: VaultSpace | null }>()
 const open = defineModel<boolean>('open', { default: false })
 const vault = useVaultStore()
 
-const form = reactive({ name: '', description: '', color: SPACE_COLORS[0] as string })
+const form = reactive({ name: '', description: '', color: SPACE_COLORS[0] as string, icon: '' })
 const saving = ref(false)
 const confirming = ref(false)
 
@@ -18,6 +18,7 @@ watch(open, (isOpen) => {
   form.name = props.space?.name ?? ''
   form.description = props.space?.description ?? ''
   form.color = props.space?.color ?? SPACE_COLORS[0]
+  form.icon = props.space?.icon ?? ''
 })
 
 const count = computed(() => (props.space ? (vault.spaceCounts[props.space.id] ?? 0) : 0))
@@ -74,6 +75,11 @@ async function remove() {
       <div class="space-y-1.5">
         <UiLabel for="space-desc">{{ $t('vault.space.desc') }}</UiLabel>
         <UiTextarea id="space-desc" v-model="form.description" rows="2" />
+      </div>
+
+      <div class="space-y-2">
+        <UiLabel>{{ $t('vault.space.icon') }}</UiLabel>
+        <VaultIconPicker v-model="form.icon" />
       </div>
 
       <div class="space-y-2">

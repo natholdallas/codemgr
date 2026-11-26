@@ -4,11 +4,71 @@
 
 export type EntryKind = 'login' | 'key' | 'server' | 'note' | 'custom'
 
+// Bumped when the encrypted document gains a shape older clients cannot keep.
+// The envelope version stays 1: its format did not change, only the plaintext
+// it wraps.
+export const DOC_VERSION = 2
+
+// Icons are stored as keys from this closed set; the UI maps them to lucide
+// components. Storing a key rather than a component name keeps the ciphertext
+// small and guarantees an imported document cannot inject an arbitrary string.
+export const ENTRY_ICONS = [
+  'globe',
+  'key',
+  'server',
+  'note',
+  'boxes',
+  'mail',
+  'chat',
+  'cloud',
+  'database',
+  'terminal',
+  'code',
+  'wallet',
+  'card',
+  'banknote',
+  'briefcase',
+  'user',
+  'users',
+  'lock',
+  'shield',
+  'smartphone',
+  'wifi',
+  'router',
+  'monitor',
+  'drive',
+  'gamepad',
+  'music',
+  'camera',
+  'bookmark',
+  'star',
+  'heart',
+  'building',
+  'shopping',
+  'plane',
+  'house',
+  'coffee',
+  'zap',
+  'fingerprint',
+  'id',
+  'file',
+] as const
+
+export type VaultIcon = (typeof ENTRY_ICONS)[number]
+
+export function isVaultIcon(value: unknown): value is VaultIcon {
+  return typeof value === 'string' && (ENTRY_ICONS as readonly string[]).includes(value)
+}
+
 export interface VaultSpace {
   id: string
   name: string
   description: string
   color: string
+  // Position in the sidebar. Records without one normalize to 0, which falls
+  // back to creation order — the ordering every existing vault already has.
+  order: number
+  icon?: VaultIcon
   createdAt: string
   updatedAt: string
   deletedAt?: string
@@ -55,6 +115,8 @@ export interface VaultEntry {
   // Format the record was created from; absent for free-form records and for
   // records imported from TOML.
   typeId?: string
+  // User-chosen override; the kind's icon is used when absent.
+  icon?: VaultIcon
   notes: string
   url: string
   source?: VaultSource
@@ -64,7 +126,8 @@ export interface VaultEntry {
 }
 
 export interface VaultDoc {
-  v: 1
+  // 1 is only ever produced by an older client; normalizeDoc upgrades it.
+  v: 1 | typeof DOC_VERSION
   updatedAt: string
   spaces: VaultSpace[]
   entries: VaultEntry[]

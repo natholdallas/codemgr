@@ -104,9 +104,13 @@ function onTgAuth(d: TelegramAuth | null) {
         </div>
 
         <UiTabs v-model="tab" class="w-full">
-          <UiTabsList class="grid w-full grid-cols-2">
-            <UiTabsTrigger value="local">{{ $t('local.title') }}</UiTabsTrigger>
-            <UiTabsTrigger value="account">{{ $t('account.title') }}</UiTabsTrigger>
+          <UiTabsList class="grid h-auto w-full grid-cols-2 items-stretch">
+            <UiTabsTrigger value="local" class="h-auto min-h-8 py-1.5 text-center leading-tight whitespace-normal">
+              {{ $t('local.title') }}
+            </UiTabsTrigger>
+            <UiTabsTrigger value="account" class="h-auto min-h-8 py-1.5 text-center leading-tight whitespace-normal">
+              {{ $t('account.title') }}
+            </UiTabsTrigger>
           </UiTabsList>
 
           <UiTabsContent value="local" class="pt-4">
@@ -121,26 +125,22 @@ function onTgAuth(d: TelegramAuth | null) {
               </UiCardHeader>
               <UiCardContent>
                 <UiTabs v-model="accountTab" class="w-full">
-                  <UiTabsList class="grid w-full grid-cols-3">
-                    <UiTabsTrigger value="password">{{ $t('auth.tab.password') }}</UiTabsTrigger>
-                    <UiTabsTrigger value="email">{{ $t('auth.tab.email') }}</UiTabsTrigger>
-                    <UiTabsTrigger value="signup">{{ $t('auth.tab.signup') }}</UiTabsTrigger>
+                  <UiTabsList class="grid h-auto w-full grid-cols-3 items-stretch">
+                    <UiTabsTrigger value="password" class="h-auto min-h-8 py-1.5 text-center leading-tight whitespace-normal">
+                      {{ $t('auth.tab.password') }}
+                    </UiTabsTrigger>
+                    <UiTabsTrigger value="email" class="h-auto min-h-8 py-1.5 text-center leading-tight whitespace-normal">
+                      {{ $t('auth.tab.email') }}
+                    </UiTabsTrigger>
+                    <UiTabsTrigger value="signup" class="h-auto min-h-8 py-1.5 text-center leading-tight whitespace-normal">
+                      {{ $t('auth.tab.signup') }}
+                    </UiTabsTrigger>
                   </UiTabsList>
                   <UiTabsContent value="password" class="pt-4">
-                    <FormPasswordLogin
-                      v-model="passwordForm"
-                      :loading="signingPassword"
-                      :text="$t('sign.in')"
-                      @submit="signInPassword"
-                    />
+                    <FormPasswordLogin v-model="passwordForm" :loading="signingPassword" :text="$t('sign.in')" @submit="signInPassword" />
                   </UiTabsContent>
                   <UiTabsContent value="email" class="pt-4">
-                    <FormEmailCodeLogin
-                      v-model="emailForm"
-                      :loading="signingEmail"
-                      :text="$t('sign.in')"
-                      @submit="signInEmail"
-                    />
+                    <FormEmailCodeLogin v-model="emailForm" :loading="signingEmail" :text="$t('sign.in')" @submit="signInEmail" />
                   </UiTabsContent>
                   <UiTabsContent value="signup" class="pt-4">
                     <FormSignUp v-model="signUpForm" :loading="signingUp" :text="$t('sign.up')" @submit="signUp" />

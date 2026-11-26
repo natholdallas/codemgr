@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { Download, LibraryBig, Lock, LogIn, LogOut, Pencil, Plus, Settings, ShieldCheck, UserRound } from '@lucide/vue'
+import { Download, GripVertical, LibraryBig, Lock, LogIn, LogOut, Pencil, Plus, Settings, ShieldCheck, UserRound } from '@lucide/vue'
+import { toast } from 'vue-sonner'
+import { VueDraggable } from 'vue-draggable-plus'
+import { vaultIcon } from '~/lib/vault/icons'
 import type { VaultSpace } from '~/lib/vault/types'
 
 const emit = defineEmits<{
@@ -19,6 +22,25 @@ const isLogoutOpen = ref(false)
 
 const signedIn = computed(() => !!auth.accessToken)
 const total = computed(() => entries.value.length)
+
+// The draggable list owns its own array: mutating `spaces` (a derived, filtered
+// view) directly would fight the store on every save.
+const orderedSpaces = ref<VaultSpace[]>([])
+watch(
+  spaces,
+  (list) => {
+    orderedSpaces.value = [...list]
+  },
+  { immediate: true },
+)
+
+async function commitOrder() {
+  try {
+    await vault.$reorderSpaces(orderedSpaces.value.map((s) => s.id))
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err))
+  }
+}
 
 function select(id: string) {
   vault.$setActiveSpace(id)
@@ -68,32 +90,64 @@ async function lockNow() {
           <span class="text-xs text-muted-foreground">{{ total }}</span>
         </button>
 
-        <div v-for="space in spaces" :key="space.id" class="group/space relative">
-          <button
-            type="button"
-            :class="[
-              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-              activeSpaceId === space.id
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
-            ]"
-            @click="select(space.id)"
-          >
-            <span class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: space.color }" />
-            <span class="flex-1 truncate">{{ space.name }}</span>
-            <span class="hidden text-xs text-muted-foreground md:inline md:group-hover/space:opacity-0">
-              {{ spaceCounts[space.id] ?? 0 }}
-            </span>
-          </button>
-          <button
-            type="button"
-            class="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground opacity-100 transition-opacity hover:bg-background/80 hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover/space:opacity-100 md:focus-visible:opacity-100"
-            :title="$t('vault.space.edit')"
-            @click.stop="emit('edit-space', space)"
-          >
-            <Pencil class="size-3.5" />
-          </button>
-        </div>
+        <VueDraggable
+          v-model="orderedSpaces"
+          :animation="150"
+          handle=".space-grip"
+          :delay="250"
+          :delay-on-touch-only="true"
+          ghost-class="opacity-40"
+          class="space-y-1"
+          @end="commitOrder"
+        >
+          <div v-for="space in orderedSpaces" :key="space.id" class="group/space relative">
+            <button
+              type="button"
+              :class="[
+                'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
+                activeSpaceId === space.id
+                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
+              ]"
+              @click="select(space.id)"
+            >
+              <template v-if="vaultIcon(space.icon)">
+                <span
+                  class="grid size-5 shrink-0 place-items-center rounded-md"
+                  :style="{ backgroundColor: `color-mix(in srgb, ${space.color} 18%, transparent)`, color: space.color }"
+                >
+                  <component :is="vaultIcon(space.icon)" class="size-3.5" />
+                </span>
+              </template>
+              <span v-else class="size-2.5 shrink-0 rounded-full" :style="{ backgroundColor: space.color }" />
+              <span class="flex-1 truncate">{{ space.name }}</span>
+              <span class="hidden text-xs text-muted-foreground md:inline md:group-hover/space:opacity-0">
+                {{ spaceCounts[space.id] ?? 0 }}
+              </span>
+            </button>
+            <div
+              class="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover/space:opacity-100 md:focus-within:opacity-100"
+            >
+              <!-- The handle is the only drag origin: a row swipe on a phone must
+                   still scroll the list, so touch drags wait for a 250ms hold. -->
+              <span
+                class="space-grip grid size-6 shrink-0 cursor-grab touch-none place-items-center rounded-md text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                :title="$t('vault.space.reorder')"
+                @click.stop
+              >
+                <GripVertical class="size-3.5" />
+              </span>
+              <button
+                type="button"
+                class="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground"
+                :title="$t('vault.space.edit')"
+                @click.stop="emit('edit-space', space)"
+              >
+                <Pencil class="size-3.5" />
+              </button>
+            </div>
+          </div>
+        </VueDraggable>
 
         <UiButton variant="ghost" size="sm" class="w-full justify-start text-muted-foreground" @click="emit('new-space')">
           <Plus class="size-4" />

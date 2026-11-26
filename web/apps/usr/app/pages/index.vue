@@ -29,7 +29,12 @@ function sectionOf(entry: VaultEntry): string {
   // together under the file name instead of making one group per key.
   const rootScalar = !path.includes('.') && !path.includes('[') && entry.kind === 'key'
   if (rootScalar) return entry.source?.file ?? ''
-  return path.split('.')[0]?.replace(/\[\d+\]$/, '') ?? ''
+  const first = path.split('.')[0] ?? ''
+  // A top-level `[[xxxxx]]` array expands to `xxxxx[0]`, `xxxxx[1]`, ...: the
+  // key is often random and the index says nothing, so the file name is the
+  // only meaningful group label.
+  if (/\[\d+\]$/.test(first)) return (entry.source?.file ?? '').replace(/\.toml$/i, '')
+  return first.replace(/\[\d+\]$/, '')
 }
 
 const groups = computed<EntryGroup[]>(() => {

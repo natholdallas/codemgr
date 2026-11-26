@@ -19,6 +19,26 @@
   opacity: 0;
 }
 
+/* Collapsed rail. The drawer only has room for the icon, but Vuetify keeps the
+   item's 1fr content column and the 32px prepend spacer, so the icon sits at the
+   left edge and the active background stretches across the whole row. Collapse
+   the row to a square button with the icon centred. */
+.v-navigation-drawer--rail .v-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0;
+}
+.v-navigation-drawer--rail .v-list-item__content,
+.v-navigation-drawer--rail .v-list-item__append,
+.v-navigation-drawer--rail .v-list-item__spacer {
+  display: none;
+}
+.v-navigation-drawer--rail .nav-item {
+  width: 44px;
+  margin-inline: auto;
+}
+
 .adm-table .v-data-table__th {
   font-size: 11px;
   text-transform: uppercase;

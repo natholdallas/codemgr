@@ -18,6 +18,7 @@ const form = reactive({
   tags: [] as string[],
   fields: [] as VaultField[],
   typeId: '',
+  icon: '',
   notes: '',
   url: '',
 })
@@ -72,6 +73,7 @@ watch(open, (isOpen) => {
   form.fields = props.entry ? props.entry.fields.map((f) => ({ ...f })) : defaults()
   form.notes = props.entry?.notes ?? ''
   form.url = props.entry?.url ?? ''
+  form.icon = props.entry?.icon ?? ''
   const typeId = props.entry?.typeId ?? ''
   form.typeId = vault.types.some((t) => t.id === typeId) ? typeId : ''
 })
@@ -112,6 +114,7 @@ async function save() {
       tags: form.tags,
       fields: form.fields.filter((f) => f.key.trim()),
       typeId: form.typeId || undefined,
+      icon: form.icon,
       notes: form.notes,
       url: form.url,
     }
@@ -179,6 +182,10 @@ async function save() {
           <UiLabel>{{ $t('vault.entry.url') }}</UiLabel>
           <UiInput v-model="form.url" placeholder="https://" />
         </div>
+        <div class="space-y-2 sm:col-span-2">
+          <UiLabel>{{ $t('vault.entry.icon') }}</UiLabel>
+          <VaultIconPicker v-model="form.icon" />
+        </div>
       </div>
 
       <div class="space-y-1.5">
@@ -195,12 +202,7 @@ async function save() {
       <div class="space-y-2">
         <div class="flex items-center justify-between">
           <UiLabel>{{ $t('vault.entry.fields') }}</UiLabel>
-          <UiButton
-            v-if="!activeType"
-            variant="ghost"
-            size="sm"
-            @click="form.fields.push({ key: '', value: '', secret: false })"
-          >
+          <UiButton v-if="!activeType" variant="ghost" size="sm" @click="form.fields.push({ key: '', value: '', secret: false })">
             <Plus class="size-3.5" />
             {{ $t('vault.entry.field.add') }}
           </UiButton>
@@ -210,12 +212,7 @@ async function save() {
         <p v-else-if="formatMissing" class="text-xs text-muted-foreground">{{ $t('vault.entry.format.missing') }}</p>
 
         <div v-for="(field, i) in form.fields" :key="i" class="flex items-center gap-2">
-          <UiInput
-            v-model="field.key"
-            class="w-32 shrink-0"
-            :placeholder="$t('vault.entry.field.key')"
-            :disabled="!!activeType"
-          />
+          <UiInput v-model="field.key" class="w-32 shrink-0" :placeholder="$t('vault.entry.field.key')" :disabled="!!activeType" />
           <UiInput
             v-model="field.value"
             class="min-w-0 flex-1"
@@ -223,13 +220,7 @@ async function save() {
             :placeholder="$t('vault.entry.field.value')"
           />
           <UiSwitch v-model="field.secret" :title="$t('vault.entry.field.secret')" :disabled="!!activeType" />
-          <UiButton
-            v-if="!activeType"
-            variant="ghost"
-            size="icon"
-            class="shrink-0"
-            @click="form.fields.splice(i, 1)"
-          >
+          <UiButton v-if="!activeType" variant="ghost" size="icon" class="shrink-0" @click="form.fields.splice(i, 1)">
             <X class="size-4" />
           </UiButton>
         </div>

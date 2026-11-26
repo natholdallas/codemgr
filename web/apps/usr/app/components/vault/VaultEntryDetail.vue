@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Copy, Eye, EyeOff, Pencil, StickyNote, Trash2 } from '@lucide/vue'
+import { vaultIcon } from '~/lib/vault/icons'
 import { KIND_META } from '~/lib/vault/kinds'
 import type { VaultEntry, VaultField } from '~/lib/vault/types'
 
@@ -22,6 +23,10 @@ watch(
   },
 )
 const meta = computed(() => (props.entry ? KIND_META[props.entry.kind] : KIND_META.custom))
+const icon = computed(() => (props.entry ? (vaultIcon(props.entry.icon) ?? meta.value.icon) : KIND_META.custom.icon))
+// Same rule as the card: empty values have nothing to show, and `__` keys are
+// import metadata that older parsers stored as ordinary fields.
+const fields = computed(() => (props.entry?.fields ?? []).filter((f) => f.value.trim() !== '' && !f.key.startsWith('__')))
 const vault = useVaultStore()
 // The format name is more useful than the generic kind once a record follows
 // one.
@@ -39,7 +44,7 @@ const formatName = computed(() => {
         <UiSheetHeader class="space-y-2 border-b p-4 pr-12">
           <div class="flex items-center gap-3">
             <span :class="['grid size-9 shrink-0 place-items-center rounded-lg', meta.tile]">
-              <component :is="meta.icon" class="size-4.5" />
+              <component :is="icon" class="size-4.5" />
             </span>
             <div class="min-w-0">
               <UiSheetTitle class="truncate">{{ entry.title }}</UiSheetTitle>
@@ -53,7 +58,7 @@ const formatName = computed(() => {
 
         <UiScrollArea class="min-h-0 flex-1">
           <div class="space-y-2 p-4">
-            <div v-for="(field, i) in entry.fields" :key="`${field.key}-${i}`" class="rounded-lg border bg-card px-3 py-2">
+            <div v-for="(field, i) in fields" :key="`${field.key}-${i}`" class="rounded-lg border bg-card px-3 py-2">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs text-muted-foreground">{{ field.key }}</span>
                 <div class="flex items-center gap-0.5">
@@ -94,7 +99,7 @@ const formatName = computed(() => {
             </div>
 
             <p v-if="entry.source" class="pt-1 text-xs text-muted-foreground">
-              {{ $t('vault.source', { file: entry.source.file }) }} · {{ entry.source.path }}
+              {{ $t('vault.source', { file: entry.source.file }) }}
             </p>
           </div>
         </UiScrollArea>

@@ -21,3 +21,14 @@
     'xxl': 2000px,
   )
 );
+
+// Cascade layer order. The names must be declared before any rule that lands in
+// them: otherwise the browser appends the later-declared layers to the end, and
+// Tailwind's reset (`padding/margin: 0` on every element) outranks every Vuetify
+// component rule — VMain loses the drawer offset and VBtn/VTable lose padding.
+// In dev the Vuetify module renders this file into `vuetify.settings.scss` as the
+// first stylesheet (ahead of the app's own css entries), so the order has to be
+// stated here; `assets/styles/css/vuetify.css` carries the identical list for the
+// bundled build.
+@layer tailwind-theme, tailwind-reset, vuetify-core, vuetify-components, vuetify-overrides, vuetify-utilities,
+  tailwind-utilities, vuetify-final;

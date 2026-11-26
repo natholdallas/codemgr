@@ -28,7 +28,17 @@ export interface ParseOptions {
 }
 
 const KINDS: EntryKind[] = ['login', 'key', 'server', 'note', 'custom']
-const META_KEYS = ['_id', '_title', '_kind', '_tags', '_notes', '_url']
+// Metadata lives in the `__` namespace; real exports write it there. The
+// single-underscore names are only read, so files exported by an older build
+// still re-import with their id, title and tags intact.
+const LEGACY_META_KEYS = ['_id', '_title', '_kind', '_tags', '_notes', '_url'] as const
+const META_KEYS = ['__id', '__title', '__kind', '__tags', '__notes', '__url', ...LEGACY_META_KEYS]
+
+/** Metadata value, preferring the current `__` name over the legacy `_` one. */
+function metaValue(meta: Record<string, unknown>, name: string): unknown {
+  return meta[`__${name}`] ?? meta[`_${name}`]
+}
+
 // Ordered first in a parsed entry so the common account fields read top-down
 // regardless of how the source file happened to order them.
 const COMMON_KEYS = ['username', 'email', 'phone', 'account', 'url', 'site', 'host', 'port', 'password']
@@ -125,7 +135,8 @@ function splitTable(table: Record<string, unknown>): Bucket {
 }
 
 function tagsFrom(segments: string[], bucket: Bucket, kind: EntryKind, baseTags: string[] | undefined) {
-  const extra = Array.isArray(bucket.meta._tags) ? bucket.meta._tags.map((t) => scalarText(t) ?? '') : []
+  const raw = metaValue(bucket.meta, 'tags')
+  const extra = Array.isArray(raw) ? raw.map((t) => scalarText(t) ?? '') : []
   const top = segments.length > 1 ? stripIndex(segments[0] ?? '') : ''
   const tags = [...(baseTags ?? []), top, ...extra, kind].map((t) => t.trim()).filter(Boolean)
   return [...new Set(tags)]
@@ -133,7 +144,7 @@ function tagsFrom(segments: string[], bucket: Bucket, kind: EntryKind, baseTags:
 
 function buildEntry(segments: string[], bucket: Bucket, opts: ParseOptions): ParsedEntry {
   const fields = orderFields(bucket.fields)
-  const metaKind = scalarText(bucket.meta._kind) as EntryKind | null
+  const metaKind = scalarText(metaValue(bucket.meta, 'kind')) as EntryKind | null
   const kind = metaKind && KINDS.includes(metaKind) ? metaKind : inferKind(fields)
   // A key entry's single payload field is the credential itself, whatever it is
   // called: `value` in key.toml-style files, `key` elsewhere.
@@ -156,18 +167,18 @@ function buildEntry(segments: string[], bucket: Bucket, opts: ParseOptions): Par
   const arrayIndex = /\[(\d+)\]$/.exec(segments.at(-1) ?? '')
   const pathTitle = segments.map(stripIndex).filter(Boolean).join('.') || 'Untitled'
   const title =
-    scalarText(bucket.meta._title)?.trim() ||
+    scalarText(metaValue(bucket.meta, 'title'))?.trim() ||
     pickField(['name', 'title', 'label', 'description', 'remark']) ||
     (arrayIndex ? pickField(['username', 'email', 'account', 'phone']) : '') ||
     `${pathTitle}${arrayIndex ? ` #${Number(arrayIndex[1]) + 1}` : ''}`
-  const id = scalarText(bucket.meta._id) || undefined
-  const url = scalarText(bucket.meta._url) || fields.find((f) => f.key.toLowerCase() === 'url')?.value || ''
+  const id = scalarText(metaValue(bucket.meta, 'id')) || undefined
+  const url = scalarText(metaValue(bucket.meta, 'url')) || fields.find((f) => f.key.toLowerCase() === 'url')?.value || ''
   const entry: ParsedEntry = {
     title,
     kind,
     tags: tagsFrom(segments, bucket, kind, opts.baseTags),
     fields,
-    notes: scalarText(bucket.meta._notes) || '',
+    notes: scalarText(metaValue(bucket.meta, 'notes')) || '',
     url: url.includes('\n') ? '' : url,
     source: { file: opts.file, path: segments.join('.') },
     meta: { id },
@@ -223,12 +234,12 @@ function entryTable(entry: VaultEntry): Record<string, unknown> {
   // Null prototype: a field literally named `__proto__` must stay an ordinary
   // property instead of replacing the object's prototype.
   const table: Record<string, unknown> = Object.create(null)
-  table._id = entry.id
-  table._title = entry.title
-  table._kind = entry.kind
-  table._tags = entry.tags
-  if (entry.notes) table._notes = entry.notes
-  if (entry.url) table._url = entry.url
+  table.__id = entry.id
+  table.__title = entry.title
+  table.__kind = entry.kind
+  table.__tags = entry.tags
+  if (entry.notes) table.__notes = entry.notes
+  if (entry.url) table.__url = entry.url
   for (const field of entry.fields) {
     const key = field.key.trim()
     // Skip keys TOML cannot express as a bare key or that would shadow the

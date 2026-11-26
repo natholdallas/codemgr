@@ -16,7 +16,7 @@ import {
   sealEnvelope,
   unlockEnvelope,
 } from '~/lib/vault/crypto'
-import { emptyDoc, mergeDocs, normalizeDoc, now, uuid } from '~/lib/vault/merge'
+import { bySidebarOrder, emptyDoc, mergeDocs, normalizeDoc, now, uuid } from '~/lib/vault/merge'
 import { deleteRemote, fetchRemote, pushRemote } from '~/lib/vault/remote'
 import {
   clearLocalEnvelope,
@@ -29,17 +29,8 @@ import {
 } from '~/lib/vault/storage'
 import { exportSpaceToml, parseVaultToml } from '~/lib/vault/toml'
 import type { ParsedEntry } from '~/lib/vault/toml'
-import { SPACE_COLORS } from '~/lib/vault/types'
-import type {
-  EntryKind,
-  VaultDoc,
-  VaultEnvelope,
-  VaultEntry,
-  VaultField,
-  VaultRecordField,
-  VaultRecordType,
-  VaultSpace,
-} from '~/lib/vault/types'
+import { DOC_VERSION, SPACE_COLORS, isVaultIcon } from '~/lib/vault/types'
+import type { EntryKind, VaultDoc, VaultEnvelope, VaultEntry, VaultField, VaultRecordField, VaultRecordType, VaultSpace } from '~/lib/vault/types'
 
 export const ALL_SPACES = 'all'
 const SPACE_STORAGE = 'vault:space'
@@ -54,6 +45,7 @@ export interface EntryInput {
   tags: string[]
   fields: VaultField[]
   typeId?: string
+  icon?: string
   notes: string
   url: string
 }
@@ -247,13 +239,36 @@ export const useVaultStore = defineStore('vault', () => {
     }, SAVE_DEBOUNCE)
   }
 
+  /** Seal the current doc and write it locally, without touching the upload timer. */
+  async function persistLocal(): Promise<void> {
+    if (!doc.value || !envelope.value || !dek) return
+    envelope.value = await sealEnvelope(envelope.value, doc.value, dek)
+    await writeLocal(envelope.value)
+  }
+
+  /**
+   * Write an upgraded document back once unlocked. A failure must not block
+   * unlocking — writeLocal has already reported it — and the next save retries.
+   */
+  async function persistMigration(rawVersion: number): Promise<void> {
+    if (rawVersion === DOC_VERSION) return
+    try {
+      await enqueue(async () => {
+        if (!doc.value) return
+        doc.value.updatedAt = now()
+        await persistLocal()
+      })
+    } catch {
+      // Reported by writeLocal (toast + syncState); the doc stays usable.
+    }
+  }
+
   /** Seal the doc, write it locally, and queue the cloud copy. */
   async function $save(): Promise<void> {
     return enqueue(async () => {
       if (!doc.value || !envelope.value || !dek) return
       doc.value.updatedAt = now()
-      envelope.value = await sealEnvelope(envelope.value, doc.value, dek)
-      await writeLocal(envelope.value)
+      await persistLocal()
       if (signedIn()) {
         syncState.value = 'saving'
         scheduleUpload()
@@ -309,10 +324,13 @@ export const useVaultStore = defineStore('vault', () => {
     }
 
     const session = readSessionDek()
+    let restoreMigration = 0
     if (envelope.value && session) {
       try {
         const key = await importDek(session)
-        doc.value = normalizeDoc(await decryptWithDek(envelope.value, key))
+        const decrypted = await decryptWithDek(envelope.value, key)
+        restoreMigration = decrypted.v === DOC_VERSION ? 0 : decrypted.v
+        doc.value = normalizeDoc(decrypted)
         dek = key
         status.value = 'unlocked'
       } catch {
@@ -322,6 +340,9 @@ export const useVaultStore = defineStore('vault', () => {
         doc.value = null
       }
     }
+    // Outside the try: a failed local write must not look like a failed decrypt
+    // and throw away the session and the doc it just restored.
+    if (restoreMigration) await persistMigration(restoreMigration)
 
     if (status.value !== 'unlocked') {
       status.value = envelope.value || (corrupt.value && remoteEnvelope.value) ? 'locked' : 'empty'
@@ -430,11 +451,15 @@ export const useVaultStore = defineStore('vault', () => {
   async function $unlock(master: string): Promise<void> {
     if (!envelope.value) throw new Error('vault:empty')
     const opened = await unlockEnvelope(envelope.value, master)
+    const needsMigration = opened.doc.v !== DOC_VERSION
     dek = opened.dek
     doc.value = normalizeDoc(opened.doc)
     writeSessionDek(await exportDek(opened.dek))
     status.value = 'unlocked'
     corrupt.value = false
+    // Persist the upgraded document before any merge/upload below, so the copy
+    // pushed to the server is already v2.
+    if (needsMigration) await persistMigration(opened.doc.v)
     if (!liveSpaces.value.some((s) => s.id === activeSpaceId.value)) activeSpaceId.value = ALL_SPACES
     if (!liveTypes.value.some((t) => t.id === activeTypeId.value)) activeTypeId.value = ''
     if (remoteEnvelope.value && remoteEnvelope.value !== envelope.value) {
@@ -486,7 +511,7 @@ export const useVaultStore = defineStore('vault', () => {
     remoteEnvelope.value = null
   }
 
-  async function $addSpace(input: { name: string; description?: string; color?: string }): Promise<VaultSpace> {
+  async function $addSpace(input: { name: string; description?: string; color?: string; icon?: string }): Promise<VaultSpace> {
     const name = input.name.trim()
     if (!name) throw new Error('vault:space.name')
     const at = now()
@@ -495,17 +520,52 @@ export const useVaultStore = defineStore('vault', () => {
       name,
       description: input.description?.trim() ?? '',
       color: input.color || SPACE_COLORS[0],
+      // Append after the last live space; `liveSpaces` is already in sidebar
+      // order, so the new one lands at the bottom of the list.
+      order: liveSpaces.value.reduce((max, s) => Math.max(max, s.order + 1), 0),
       createdAt: at,
       updatedAt: at,
     }
+    if (isVaultIcon(input.icon)) space.icon = input.icon
     requireDoc().spaces.push(space)
     await $save()
     return space
   }
 
-  async function $updateSpace(id: string, patch: Partial<Pick<VaultSpace, 'name' | 'description' | 'color'>>) {
+  async function $updateSpace(id: string, patch: { name?: string; description?: string; color?: string; icon?: string }) {
     const space = findSpace(id)
-    Object.assign(space, patch, { updatedAt: now() })
+    const { icon, ...rest } = patch
+    Object.assign(space, rest, { updatedAt: now() })
+    // A form submits a plain string, so validate here rather than trusting the
+    // caller: empty clears the override, absent keeps it.
+    if (icon !== undefined) {
+      if (isVaultIcon(icon)) space.icon = icon
+      else delete space.icon
+    }
+    await $save()
+  }
+
+  /**
+   * Apply a dragged sidebar order. Only live spaces are renumbered; tombstoned
+   * ones keep their position and never come back to the top after a revive.
+   */
+  async function $reorderSpaces(ids: string[]): Promise<void> {
+    const d = requireDoc()
+    const order = new Map(ids.map((id, i) => [id, i]))
+    const at = now()
+    let changed = false
+    for (const space of d.spaces) {
+      if (space.deletedAt) continue
+      const next = order.get(space.id)
+      if (next === undefined || space.order === next) continue
+      space.order = next
+      space.updatedAt = at
+      changed = true
+    }
+    if (!changed) return
+    // liveSpaces reads doc.spaces in array order rather than sorting, so the
+    // array itself has to move too or this session keeps showing the old order.
+    d.spaces.sort(bySidebarOrder)
     await $save()
   }
 
@@ -579,6 +639,7 @@ export const useVaultStore = defineStore('vault', () => {
       createdAt: at,
       updatedAt: at,
     }
+    if (isVaultIcon(input.icon)) entry.icon = input.icon
     requireDoc().entries.push(entry)
     await $save()
     return entry
@@ -592,6 +653,8 @@ export const useVaultStore = defineStore('vault', () => {
       tags: patch.tags ? [...new Set(patch.tags.map((t) => t.trim()).filter(Boolean))] : entry.tags,
       fields: patch.fields ? patch.fields.map((f) => ({ ...f, key: f.key.trim() })) : entry.fields,
       url: patch.url?.trim() ?? entry.url,
+      // `icon: ''` clears the override; an absent key keeps it.
+      icon: patch.icon !== undefined ? (isVaultIcon(patch.icon) ? patch.icon : undefined) : entry.icon,
       updatedAt: now(),
     })
     await $save()
@@ -813,6 +876,7 @@ export const useVaultStore = defineStore('vault', () => {
     $mergeRemote,
     $addSpace,
     $updateSpace,
+    $reorderSpaces,
     $removeSpace,
     $addType,
     $updateType,

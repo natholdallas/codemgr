@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { Copy, ExternalLink, Eye, EyeOff, Pencil, Trash2 } from '@lucide/vue'
+import { toast } from 'vue-sonner'
+import { vaultIcon } from '~/lib/vault/icons'
 import { KIND_META } from '~/lib/vault/kinds'
 import type { VaultEntry, VaultField } from '~/lib/vault/types'
 
@@ -10,42 +12,65 @@ const emit = defineEmits<{
   remove: []
 }>()
 
+const vault = useVaultStore()
 const meta = computed(() => KIND_META[props.entry.kind])
-const revealed = ref(false)
+const icon = computed(() => vaultIcon(props.entry.icon) ?? meta.value.icon)
+const { t, locale } = useI18n()
 
-// Card rows come from field names rather than a fixed shape: imported TOML is
-// arbitrary, and this keeps the account, the label and the secret visible
-// without opening the entry.
-const ACCOUNT_KEYS = ['username', 'email', 'account', 'phone']
-const DETAIL_KEYS = ['name', 'description', 'label', 'remark', 'host', 'site']
+// Every non-empty field is shown, with no cap: the card is the entry's summary,
+// and a record whose sixth field is the one that matters must not hide it.
+// `__` keys are the import metadata namespace leaking into old records, not
+// user fields.
+const fields = computed(() => props.entry.fields.filter((f) => f.value.trim() !== '' && !f.key.startsWith('__')))
 
-const usable = (field: VaultField) => !field.secret && !!field.value.trim() && field.value !== props.entry.title
+// Key records store their payload in `value`; entries imported before the
+// parser flagged it still carry it as a plain field.
+const isSecret = (field: VaultField) => field.secret || (props.entry.kind === 'key' && field.key.toLowerCase() === 'value')
 
-const accountField = computed(() =>
-  props.entry.fields.find((field) => ACCOUNT_KEYS.includes(field.key.toLowerCase()) && usable(field)),
-)
+// Reveal state is per row, so reading one password does not expose the rest.
+const revealed = ref<Record<number, boolean>>({})
 
-const detailField = computed(() => {
-  for (const key of DETAIL_KEYS) {
-    const field = props.entry.fields.find((f) => f.key.toLowerCase() === key && usable(f))
-    if (field) return field
+const formatName = computed(() => (props.entry.typeId ? (vault.types.find((x) => x.id === props.entry.typeId)?.name ?? '') : ''))
+const subtitle = computed(() => formatName.value || t(`vault.kind.${props.entry.kind}`))
+
+const editing = ref(false)
+const draft = ref('')
+const titleWrap = ref<HTMLElement | null>(null)
+
+async function startRename() {
+  draft.value = props.entry.title
+  editing.value = true
+  await nextTick()
+  const el = titleWrap.value?.querySelector('input')
+  if (!el) return
+  el.focus()
+  // The click that opened the editor places the caret on mouseup, which runs
+  // after nextTick; selecting on the next frame keeps the whole title selected
+  // so typing replaces it instead of splicing into the middle.
+  requestAnimationFrame(() => el.select())
+}
+
+async function commitRename() {
+  if (!editing.value) return
+  // Cleared first: the Enter handler also blurs, and a second commit would be a
+  // no-op edit against the already-renamed record.
+  editing.value = false
+  const title = draft.value.trim()
+  if (!title || title === props.entry.title) return
+  try {
+    await vault.$updateEntry(props.entry.id, { title })
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err))
   }
-  return undefined
-})
+}
 
-// Key records store their payload in `value`, which older entries imported
-// before the parser flagged it still carry as a plain field.
-const secretField = computed(() =>
-  props.entry.fields.find(
-    (field) =>
-      !!field.value.trim() &&
-      (field.secret || (props.entry.kind === 'key' && field.key.toLowerCase() === 'value')),
-  ),
-)
+function cancelRename() {
+  editing.value = false
+  draft.value = props.entry.title
+}
 
 // dayjs ships `en` and `zh-cn` (see the infra module defaults), not the i18n
 // locale codes, so map before formatting.
-const { locale } = useI18n()
 const dayjs = useDayjs()
 const updated = computed(() => {
   const lang = locale.value.startsWith('zh') ? 'zh-cn' : 'en'
@@ -60,11 +85,24 @@ const updated = computed(() => {
   >
     <div class="flex items-start gap-3">
       <span :class="['grid size-9 shrink-0 place-items-center rounded-lg', meta.tile]">
-        <component :is="meta.icon" class="size-4.5" />
+        <component :is="icon" class="size-4.5" />
       </span>
       <div class="min-w-0 flex-1">
-        <p class="break-words text-lg leading-snug font-semibold">{{ entry.title }}</p>
-        <p class="mt-0.5 truncate text-xs text-muted-foreground">{{ entry.source?.path || $t(`vault.kind.${entry.kind}`) }}</p>
+        <div ref="titleWrap" @click.stop="startRename">
+          <UiInput
+            v-if="editing"
+            v-model="draft"
+            class="h-8 text-lg font-semibold"
+            @click.stop
+            @keydown.enter.prevent="commitRename"
+            @keydown.esc.prevent="cancelRename"
+            @blur="commitRename"
+          />
+          <p v-else class="break-words text-lg leading-snug font-semibold" :title="t('vault.entry.title.edit')">
+            {{ entry.title }}
+          </p>
+        </div>
+        <p class="mt-0.5 truncate text-xs text-muted-foreground">{{ subtitle }}</p>
       </div>
       <div
         class="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity focus-within:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100"
@@ -88,35 +126,33 @@ const updated = computed(() => {
       </div>
     </div>
 
-    <dl v-if="detailField || accountField || secretField" class="mt-3 space-y-1.5 text-sm">
-      <div v-if="detailField" class="flex gap-2">
-        <dt class="w-20 shrink-0 truncate text-xs text-muted-foreground">{{ detailField.key }}</dt>
-        <dd class="min-w-0 flex-1 truncate" :title="detailField.value">{{ detailField.value }}</dd>
-      </div>
-      <div v-if="accountField" class="flex gap-2">
-        <dt class="w-20 shrink-0 truncate text-xs text-muted-foreground">{{ accountField.key }}</dt>
-        <dd class="min-w-0 flex-1 truncate" :title="accountField.value">{{ accountField.value }}</dd>
-      </div>
-      <div v-if="secretField" class="flex items-center gap-1.5">
-        <dt class="w-20 shrink-0 truncate text-xs text-muted-foreground">{{ secretField.key }}</dt>
-        <dd class="min-w-0 flex-1 truncate font-mono text-xs sm:text-sm" :title="revealed ? secretField.value : ''">
-          {{ revealed ? secretField.value : '••••••••' }}
-        </dd>
-        <UiButton
-          variant="ghost"
-          size="icon"
-          class="size-7"
-          :title="revealed ? $t('vault.hide') : $t('vault.reveal')"
-          @click.stop="revealed = !revealed"
+    <dl v-if="fields.length" class="mt-3 space-y-1.5 text-sm">
+      <div v-for="(field, i) in fields" :key="`${field.key}-${i}`" class="flex items-center gap-1.5">
+        <dt class="w-20 shrink-0 truncate text-xs text-muted-foreground">{{ field.key }}</dt>
+        <dd
+          class="min-w-0 flex-1 truncate"
+          :class="isSecret(field) ? 'font-mono text-xs sm:text-sm' : ''"
+          :title="isSecret(field) && !revealed[i] ? '' : field.value"
         >
-          <EyeOff v-if="revealed" class="size-3.5" />
-          <Eye v-else class="size-3.5" />
-        </UiButton>
-        <span @click.stop>
-          <UixCopyable :text="secretField.value" class="size-7 justify-center">
-            <Copy class="size-3.5" />
-          </UixCopyable>
-        </span>
+          {{ isSecret(field) && !revealed[i] ? '••••••••' : field.value }}
+        </dd>
+        <template v-if="isSecret(field)">
+          <UiButton
+            variant="ghost"
+            size="icon"
+            class="size-7"
+            :title="revealed[i] ? $t('vault.hide') : $t('vault.reveal')"
+            @click.stop="revealed[i] = !revealed[i]"
+          >
+            <EyeOff v-if="revealed[i]" class="size-3.5" />
+            <Eye v-else class="size-3.5" />
+          </UiButton>
+          <span @click.stop>
+            <UixCopyable :text="field.value" class="size-7 justify-center">
+              <Copy class="size-3.5" />
+            </UixCopyable>
+          </span>
+        </template>
       </div>
     </dl>
 

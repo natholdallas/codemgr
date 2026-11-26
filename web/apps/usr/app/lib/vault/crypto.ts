@@ -7,6 +7,7 @@
 //
 // Changing the master password re-wraps the same DEK, so the ciphertext (and
 // every other device's copy) stays readable.
+import { DOC_VERSION } from './types'
 import type { VaultDoc, VaultEnvelope } from './types'
 
 export const KDF_ITERATIONS = 600_000
@@ -66,7 +67,9 @@ async function decryptDoc(dek: CryptoKey, iv: Uint8Array, data: string): Promise
   }
   try {
     const doc = JSON.parse(new TextDecoder().decode(plain)) as VaultDoc
-    if (!doc || doc.v !== 1 || !Array.isArray(doc.spaces) || !Array.isArray(doc.entries)) throw new Error(CORRUPT)
+    if (!doc || (doc.v !== 1 && doc.v !== DOC_VERSION) || !Array.isArray(doc.spaces) || !Array.isArray(doc.entries)) {
+      throw new Error(CORRUPT)
+    }
     return doc
   } catch {
     throw new Error(CORRUPT)

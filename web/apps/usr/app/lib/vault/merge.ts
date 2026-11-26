@@ -1,7 +1,7 @@
 // Document reconciliation. Sync is last-write-wins per record on ISO
 // timestamps: clocks can disagree, but both replicas run the same comparison,
 // so they converge on the same record instead of ping-ponging.
-import { PROTOTYPE_KEYS, SPACE_COLORS } from './types'
+import { DOC_VERSION, PROTOTYPE_KEYS, SPACE_COLORS, isVaultIcon } from './types'
 import type { EntryKind, VaultDoc, VaultEntry, VaultField, VaultRecordField, VaultRecordType, VaultSpace } from './types'
 
 type Record_ = { id?: unknown; updatedAt?: unknown; deletedAt?: unknown }
@@ -92,12 +92,23 @@ function normalizeSpace(input: unknown, at: string): VaultSpace | null {
     name: name || 'Space',
     description: str(raw.description),
     color: str(raw.color) || SPACE_COLORS[0],
+    // Pre-v2 records carry no position: 0 everywhere means the sort falls
+    // through to creation order, which is the order they already display in.
+    order: typeof raw.order === 'number' && Number.isFinite(raw.order) ? raw.order : 0,
     createdAt: str(raw.createdAt) || at,
     updatedAt: str(raw.updatedAt) || at,
   }
+  if (isVaultIcon(raw.icon)) space.icon = raw.icon
   const deletedAt = str(raw.deletedAt)
   if (deletedAt) space.deletedAt = deletedAt
   return space
+}
+
+// Position first, then creation order, then id: two devices that disagree on
+// `order` still agree on the rest, so they land on the same sequence. Exported
+// because the store sorts the live array with the same rule after a drag.
+export function bySidebarOrder(a: VaultSpace, b: VaultSpace): number {
+  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id)
 }
 
 function normalizeEntry(input: unknown, at: string): VaultEntry | null {
@@ -120,6 +131,7 @@ function normalizeEntry(input: unknown, at: string): VaultEntry | null {
   }
   const typeId = str(raw.typeId).trim()
   if (typeId) entry.typeId = typeId
+  if (isVaultIcon(raw.icon)) entry.icon = raw.icon
   const src = raw.source
   if (src && typeof src === 'object') {
     const s = src as Record<string, unknown>
@@ -144,7 +156,7 @@ function dedupe<T extends { id: string; updatedAt?: string }>(items: T[]): T[] {
 export function emptyDoc(): VaultDoc {
   const at = now()
   return {
-    v: 1,
+    v: DOC_VERSION,
     updatedAt: at,
     spaces: [
       {
@@ -152,6 +164,7 @@ export function emptyDoc(): VaultDoc {
         name: 'Personal',
         description: '',
         color: SPACE_COLORS[0],
+        order: 0,
         createdAt: at,
         updatedAt: at,
       },
@@ -164,7 +177,7 @@ export function emptyDoc(): VaultDoc {
 /** Validate and repair an arbitrary object into a usable document. */
 export function normalizeDoc(input: unknown): VaultDoc {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
-  if (raw.v !== 1) throw new Error('vault:unsupported')
+  if (raw.v !== 1 && raw.v !== DOC_VERSION) throw new Error('vault:unsupported')
   const at = now()
   const spaces = dedupe((Array.isArray(raw.spaces) ? raw.spaces : []).map((s) => normalizeSpace(s, at)).filter((s): s is VaultSpace => !!s))
   const entries = dedupe((Array.isArray(raw.entries) ? raw.entries : []).map((e) => normalizeEntry(e, at)).filter((e): e is VaultEntry => !!e))
@@ -181,9 +194,9 @@ export function normalizeDoc(input: unknown): VaultDoc {
     }
   }
   return {
-    v: 1,
+    v: DOC_VERSION,
     updatedAt: str(raw.updatedAt) || at,
-    spaces: [...spaces].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    spaces: [...spaces].sort(bySidebarOrder),
     entries,
     types,
   }
@@ -203,9 +216,9 @@ export function mergeDocs(a: VaultDoc, b: VaultDoc): VaultDoc {
     }
   }
   return {
-    v: 1,
+    v: DOC_VERSION,
     updatedAt: [str(a.updatedAt), str(b.updatedAt), at].sort().at(-1) as string,
-    spaces: [...spaces].sort((x, y) => x.createdAt.localeCompare(y.createdAt)),
+    spaces: [...spaces].sort(bySidebarOrder),
     entries,
     types,
   }
