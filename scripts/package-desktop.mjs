@@ -96,10 +96,11 @@ const previous = readManifest()
 const installers = [...fromDirs.flatMap(scanDir), ...bundleDirs.flatMap(scanDir)]
 const version = readVersion(previous.version)
 
-// Gradle names the APK after the build type only; give it the product name and
-// version so it matches the desktop artifacts in the download list.
+// Gradle names the APK after the build type only, and a GitHub release replaces
+// the spaces in uploaded asset names with dots — give every installer the same
+// `Codemgr Vault_<version>_<rest>` form the local bundles use.
 function destinationName(source) {
-  const name = basename(source)
+  const name = basename(source).replace(/^Codemgr\.Vault/, 'Codemgr Vault')
   if (name.toLowerCase().endsWith('.apk')) return `Codemgr Vault_${version}_universal.apk`
   return name
 }

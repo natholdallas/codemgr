@@ -1,19 +1,37 @@
 {
   "version": "0.1.0",
-  "releasedAt": "2026-11-23T12:37:50.949Z",
+  "releasedAt": "2026-11-26T20:33:53.288Z",
   "webUrl": "https://codemgr.hnath.club",
   "files": [
     {
       "name": "Codemgr Vault_0.1.0_amd64.AppImage",
       "url": "/downloads/Codemgr%20Vault_0.1.0_amd64.AppImage",
-      "size": 114403832,
-      "sha256": "0763961e5dba1b45d430553d6ca9002108d2e8f0ec361b3e68a042f2c2d0ab20"
+      "size": 82942456,
+      "sha256": "d17f0227e6b783130c9a1459f07eb58243a9f4b9a907b4fc0bc7bb821c44d771"
     },
     {
       "name": "Codemgr Vault_0.1.0_amd64.deb",
       "url": "/downloads/Codemgr%20Vault_0.1.0_amd64.deb",
-      "size": 4334998,
-      "sha256": "2dc8466ec92ce08137c1bf9beb85b6792ba363701014e6eae1d22b531c9bc8bc"
+      "size": 4304730,
+      "sha256": "8d739b21985b11e370e2aa8a5c8be910791c685a93bd5676f6dd003798234853"
+    },
+    {
+      "name": "Codemgr Vault_0.1.0_universal.apk",
+      "url": "/downloads/Codemgr%20Vault_0.1.0_universal.apk",
+      "size": 44062139,
+      "sha256": "680f5c5c328af5adc15826d3ec39fdbf95b55c5ad58f9caafbb85a6b1509045b"
+    },
+    {
+      "name": "Codemgr Vault_0.1.0_universal.dmg",
+      "url": "/downloads/Codemgr%20Vault_0.1.0_universal.dmg",
+      "size": 8650568,
+      "sha256": "2095c2888b5444d6d5a41ac4dd2363d25834966af8997532a9da6003ab636856"
+    },
+    {
+      "name": "Codemgr Vault_0.1.0_x64-setup.exe",
+      "url": "/downloads/Codemgr%20Vault_0.1.0_x64-setup.exe",
+      "size": 3216545,
+      "sha256": "76e9ec651e70d073e73670f5e1b885890ef7c6be92b1160aa4469abcfb777de3"
     }
   ]
 }
