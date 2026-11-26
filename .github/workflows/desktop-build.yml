@@ -67,6 +67,9 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Generate API SDK
+        # bash on every runner: PowerShell mangles the `@v2.0.0-rc5` version
+        # suffix and the forward-slash GOPATH join below.
+        shell: bash
         run: |
           go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5
           "$(go env GOPATH)/bin/swag" init --parseDependency --parseInternal
@@ -143,6 +146,9 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
       - name: Generate API SDK
+        # bash on every runner: PowerShell mangles the `@v2.0.0-rc5` version
+        # suffix and the forward-slash GOPATH join below.
+        shell: bash
         run: |
           go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5
           "$(go env GOPATH)/bin/swag" init --parseDependency --parseInternal
