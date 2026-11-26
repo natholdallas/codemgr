@@ -214,7 +214,7 @@ app_bind=(                       # app|api_endpoint|site_endpoint
 | | `media-max-size`, `media-avatar-max-size` | MB |
 | `db` | `driver`, `name`, `host`, `port`, `query`, `username`, `password` | `auto-migrate`, `auto-create` |
 | `redis` | `host`, `port`, `index` | Required at boot |
-| `smtp` | `host`, `port`, `from`, `password` | 465 implicit SSL, 587 STARTTLS, 25 plaintext |
+| `smtp` | `host`, `port`, `security`, `username`, `password`, `from` | `security`: `ssl` (465), `starttls` (587), `none` (25/local relay); empty = auto by port. No `username` = unauthenticated relay |
 | `oauth.google` | `enabled`, `client-id`, `client-secret`, `redirect-uri` | |
 | `oauth.telegram` | `enabled`, `bot-token`, `bot-username` | |
 

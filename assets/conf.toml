@@ -84,8 +84,10 @@ index = 0
 [smtp]
 host = "smtp.qq.com"
 port = 587           # 465 = implicit SSL, 587 = STARTTLS, 25 = plaintext
-from = ""            # sender address (also used as SMTP username)
+security = "starttls" # ssl | starttls | none; empty = auto (465 => ssl, otherwise STARTTLS when offered)
+username = ""        # SMTP username; empty = no auth, or defaults to `from`
 password = ""
+from = ""            # sender address (From header + envelope sender); empty = username
 
 [oauth.google]
 enabled = false             # enable Google sign-in / bind

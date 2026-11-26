@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 
 	flog "github.com/gofiber/fiber/v3/log"
@@ -93,8 +95,10 @@ type AppConf struct {
 	// smtp
 	SMTPHost     string
 	SMTPPort     int
-	SMTPFrom     string
+	SMTPSecurity string
+	SMTPUsername string
 	SMTPPassword string
+	SMTPFrom     string
 	SMTPAddr     string
 
 	// request client
@@ -212,9 +216,18 @@ func LoadApp() {
 	// smtp
 	App.SMTPHost = vipers.String("smtp.host")
 	App.SMTPPort = vipers.Int("smtp.port")
-	App.SMTPFrom = vipers.String("smtp.from")
+	App.SMTPSecurity = strings.ToLower(strings.TrimSpace(vipers.String("smtp.security")))
+	App.SMTPUsername = vipers.String("smtp.username")
+	if App.SMTPUsername == "" {
+		// Older configs carried only `from`; it doubled as the auth username.
+		App.SMTPUsername = vipers.String("smtp.from")
+	}
 	App.SMTPPassword = vipers.String("smtp.password")
-	App.SMTPAddr = fmt.Sprintf("%s:%d", App.SMTPHost, App.SMTPPort)
+	App.SMTPFrom = vipers.String("smtp.from")
+	if App.SMTPFrom == "" {
+		App.SMTPFrom = App.SMTPUsername
+	}
+	App.SMTPAddr = net.JoinHostPort(App.SMTPHost, strconv.Itoa(App.SMTPPort))
 
 	// db
 	App.DBName = vipers.String("db.name")
