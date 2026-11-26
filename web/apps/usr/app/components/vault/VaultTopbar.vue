@@ -1,30 +1,26 @@
 <script setup lang="ts">
-import { Download, FileCode2, ListChecks, Menu, Plus, RefreshCw, Search, SlidersHorizontal, Upload } from '@lucide/vue'
+import { Menu, Plus, RefreshCw, Search, SlidersHorizontal } from '@lucide/vue'
 
 const emit = defineEmits<{
   'menu': []
   'new-entry': []
-  'import': []
-  'export-toml': []
-  'edit-toml': []
 }>()
 
 const vault = useVaultStore()
 const auth = useAuthStore()
 const { query } = storeToRefs(vault)
-const { openTypes } = useVaultDialogs()
 const filtersOpen = ref(false)
 </script>
 
 <template>
-  <header class="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b bg-background/80 px-3 py-2.5 backdrop-blur">
+  <header class="sticky top-0 z-10 flex items-center gap-2 border-b bg-background/80 px-3 py-2.5 backdrop-blur">
     <UiButton variant="ghost" size="icon" class="md:hidden" @click="emit('menu')">
       <Menu class="size-5" />
     </UiButton>
 
     <div class="relative min-w-0 flex-1 md:min-w-40">
       <Search class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-      <UiInput v-model="query" class="pl-8" :placeholder="$t('vault.search')" />
+      <UiInput v-model="query" class="pl-8" :aria-label="$t('vault.search')" />
     </div>
 
     <UiButton variant="ghost" size="icon" class="md:hidden" :title="$t('vault.filters')" @click="filtersOpen = true">
@@ -33,7 +29,7 @@ const filtersOpen = ref(false)
 
     <VaultFilters class="hidden md:flex" />
 
-    <div class="flex w-full items-center justify-end gap-1 md:w-auto md:justify-start">
+    <div class="flex items-center gap-1">
       <UiButton
         v-if="auth.accessToken"
         variant="ghost"
@@ -45,23 +41,9 @@ const filtersOpen = ref(false)
         <RefreshCw :class="['size-4', vault.syncState === 'saving' && 'animate-spin']" />
       </UiButton>
 
-      <UiButton variant="ghost" size="icon" :title="$t('vault.export.toml')" @click="emit('export-toml')">
-        <Upload class="size-4" />
-      </UiButton>
-      <UiButton variant="ghost" size="icon" :title="$t('vault.import')" @click="emit('import')">
-        <Download class="size-4" />
-      </UiButton>
-      <UiButton variant="ghost" size="icon" :title="$t('vault.toml.edit')" @click="emit('edit-toml')">
-        <FileCode2 class="size-4" />
-      </UiButton>
-
-      <UiButton variant="ghost" size="icon" :title="$t('vault.format')" @click="openTypes">
-        <ListChecks class="size-4" />
-      </UiButton>
-
-      <UiButton size="sm" @click="emit('new-entry')">
+      <UiButton size="sm" :title="$t('vault.entry.new')" @click="emit('new-entry')">
         <Plus class="size-4" />
-        <span class="hidden sm:inline">{{ $t('vault.entry.new') }}</span>
+        <span class="hidden lg:inline">{{ $t('vault.entry.new') }}</span>
       </UiButton>
     </div>
   </header>

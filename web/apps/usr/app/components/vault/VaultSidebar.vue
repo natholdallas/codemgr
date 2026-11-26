@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, GripVertical, LibraryBig, Lock, LogIn, LogOut, Pencil, Plus, Settings, ShieldCheck, UserRound } from '@lucide/vue'
+import { Download, GripVertical, LibraryBig, ListChecks, Lock, LogIn, LogOut, Pencil, Plus, Settings, ShieldCheck, Upload, UserRound } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { VueDraggable } from 'vue-draggable-plus'
 import { vaultIcon } from '~/lib/vault/icons'
@@ -9,6 +9,7 @@ const emit = defineEmits<{
   'new-space': []
   'edit-space': [space: VaultSpace]
   'import': []
+  'export-toml': []
   'navigate': []
 }>()
 
@@ -16,12 +17,14 @@ const vault = useVaultStore()
 const auth = useAuthStore()
 const user = useUserStore()
 const app = useAppStore()
+const route = useRoute()
 const { spaces, spaceCounts, activeSpaceId, entries, status } = storeToRefs(vault)
 const { profile } = storeToRefs(user)
 const isLogoutOpen = ref(false)
 
 const signedIn = computed(() => !!auth.accessToken)
 const total = computed(() => entries.value.length)
+const onPresets = computed(() => route.name === 'presets')
 
 // The draggable list owns its own array: mutating `spaces` (a derived, filtered
 // view) directly would fight the store on every save.
@@ -47,7 +50,7 @@ function select(id: string) {
   emit('navigate')
   // The sidebar is visible on settings too; picking a space must leave the
   // settings page instead of only changing state behind it.
-  if (useRoute().name !== 'index') void navigateTo({ name: 'index' })
+  if (route.name !== 'index') void navigateTo({ name: 'index' })
 }
 
 // Locking must leave the decrypted view: staying on the index with an empty doc
@@ -106,9 +109,14 @@ async function lockNow() {
               :class="[
                 'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
                 activeSpaceId === space.id
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  ? 'font-medium text-foreground'
                   : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
               ]"
+              :style="
+                activeSpaceId === space.id
+                  ? { backgroundColor: `color-mix(in srgb, ${space.color} 16%, transparent)` }
+                  : undefined
+              "
               @click="select(space.id)"
             >
               <template v-if="vaultIcon(space.icon)">
@@ -157,9 +165,28 @@ async function lockNow() {
     </UiScrollArea>
 
     <div class="space-y-1 border-t p-2">
+      <NuxtLink
+        :to="{ name: 'presets' }"
+        :class="[
+          'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm transition-colors',
+          onPresets
+            ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+            : 'text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground',
+        ]"
+        @click="emit('navigate')"
+      >
+        <ListChecks class="size-4" />
+        {{ $t('vault.preset.manager') }}
+      </NuxtLink>
+
       <UiButton variant="ghost" size="sm" class="w-full justify-start text-muted-foreground" @click="emit('import')">
         <Download class="size-4" />
         {{ $t('vault.import') }}
+      </UiButton>
+
+      <UiButton variant="ghost" size="sm" class="w-full justify-start text-muted-foreground" @click="emit('export-toml')">
+        <Upload class="size-4" />
+        {{ $t('vault.export.toml') }}
       </UiButton>
 
       <NuxtLink

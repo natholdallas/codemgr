@@ -1,7 +1,7 @@
 // Document reconciliation. Sync is last-write-wins per record on ISO
 // timestamps: clocks can disagree, but both replicas run the same comparison,
 // so they converge on the same record instead of ping-ponging.
-import { DOC_VERSION, PROTOTYPE_KEYS, SPACE_COLORS, isVaultIcon } from './types'
+import { DEFAULT_SPACE_COLOR, DOC_VERSION, PROTOTYPE_KEYS, isHexColor, isVaultIcon } from './types'
 import type { EntryKind, VaultDoc, VaultEntry, VaultField, VaultRecordField, VaultRecordType, VaultSpace } from './types'
 
 type Record_ = { id?: unknown; updatedAt?: unknown; deletedAt?: unknown }
@@ -23,6 +23,17 @@ export function uuid(): string {
 export const now = () => new Date().toISOString()
 
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback)
+
+// Group label derived from an imported TOML path: array indices are noise
+// (`apple[0]` and `apple[1]` belong together), the rest of the path is not
+// (`bank.agricultural` stays distinct from `bank.mercantile`).
+function groupFromPath(path: unknown): string {
+  return str(path)
+    .split('.')
+    .map((segment) => segment.replace(/\[\d+\]$/, ''))
+    .filter(Boolean)
+    .join('.')
+}
 
 // Timestamps compare lexicographically as ISO-8601 UTC strings; anything
 // unparsable sorts first so a real record always wins over a damaged one.
@@ -91,7 +102,7 @@ function normalizeSpace(input: unknown, at: string): VaultSpace | null {
     id,
     name: name || 'Space',
     description: str(raw.description),
-    color: str(raw.color) || SPACE_COLORS[0],
+    color: str(raw.color) || DEFAULT_SPACE_COLOR,
     // Pre-v2 records carry no position: 0 everywhere means the sort falls
     // through to creation order, which is the order they already display in.
     order: typeof raw.order === 'number' && Number.isFinite(raw.order) ? raw.order : 0,
@@ -122,6 +133,9 @@ function normalizeEntry(input: unknown, at: string): VaultEntry | null {
     spaceId: str(raw.spaceId),
     title: str(raw.title) || 'Untitled',
     kind,
+    // Documents written before groups existed derive one from the imported
+    // TOML path, so an import made earlier shows up already grouped.
+    group: str(raw.group).trim() || groupFromPath((raw.source as Record<string, unknown> | undefined)?.path),
     tags: Array.isArray(raw.tags) ? raw.tags.map((t) => str(t).trim()).filter(Boolean) : [],
     fields: normalizeFields(raw.fields),
     notes: str(raw.notes),
@@ -132,6 +146,7 @@ function normalizeEntry(input: unknown, at: string): VaultEntry | null {
   const typeId = str(raw.typeId).trim()
   if (typeId) entry.typeId = typeId
   if (isVaultIcon(raw.icon)) entry.icon = raw.icon
+  if (isHexColor(raw.color)) entry.color = raw.color
   const src = raw.source
   if (src && typeof src === 'object') {
     const s = src as Record<string, unknown>
@@ -153,6 +168,18 @@ function dedupe<T extends { id: string; updatedAt?: string }>(items: T[]): T[] {
   return [...map.values()]
 }
 
+// Disabled system presets: ids only, deduped. An unknown id is kept so a
+// preset added by a newer client stays disabled when this one saves the doc.
+function normalizeDisabled(input: unknown): string[] {
+  if (!Array.isArray(input)) return []
+  const out = new Set<string>()
+  for (const raw of input) {
+    const id = str(raw).trim()
+    if (id) out.add(id)
+  }
+  return [...out]
+}
+
 export function emptyDoc(): VaultDoc {
   const at = now()
   return {
@@ -163,7 +190,7 @@ export function emptyDoc(): VaultDoc {
         id: uuid(),
         name: 'Personal',
         description: '',
-        color: SPACE_COLORS[0],
+        color: DEFAULT_SPACE_COLOR,
         order: 0,
         createdAt: at,
         updatedAt: at,
@@ -171,13 +198,14 @@ export function emptyDoc(): VaultDoc {
     ],
     entries: [],
     types: [],
+    disabledPresets: [],
   }
 }
 
 /** Validate and repair an arbitrary object into a usable document. */
 export function normalizeDoc(input: unknown): VaultDoc {
   const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
-  if (raw.v !== 1 && raw.v !== DOC_VERSION) throw new Error('vault:unsupported')
+  if (raw.v !== 1 && raw.v !== 2 && raw.v !== DOC_VERSION) throw new Error('vault:unsupported')
   const at = now()
   const spaces = dedupe((Array.isArray(raw.spaces) ? raw.spaces : []).map((s) => normalizeSpace(s, at)).filter((s): s is VaultSpace => !!s))
   const entries = dedupe((Array.isArray(raw.entries) ? raw.entries : []).map((e) => normalizeEntry(e, at)).filter((e): e is VaultEntry => !!e))
@@ -199,6 +227,7 @@ export function normalizeDoc(input: unknown): VaultDoc {
     spaces: [...spaces].sort(bySidebarOrder),
     entries,
     types,
+    disabledPresets: normalizeDisabled(raw.disabledPresets),
   }
 }
 
@@ -221,5 +250,8 @@ export function mergeDocs(a: VaultDoc, b: VaultDoc): VaultDoc {
     spaces: [...spaces].sort(bySidebarOrder),
     entries,
     types,
+    // Union rather than last-write-wins: a preset turned off on one device must
+    // not silently come back from a device that never saw the change.
+    disabledPresets: [...new Set([...normalizeDisabled(a.disabledPresets), ...normalizeDisabled(b.disabledPresets)])],
   }
 }

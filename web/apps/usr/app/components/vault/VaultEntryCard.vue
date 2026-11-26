@@ -15,6 +15,19 @@ const emit = defineEmits<{
 const vault = useVaultStore()
 const meta = computed(() => KIND_META[props.entry.kind])
 const icon = computed(() => vaultIcon(props.entry.icon) ?? meta.value.icon)
+// Explicit card color wins; otherwise the card wears its space's color, so the
+// grid reads as color-coded even before anyone touches a card.
+const accent = computed(() => props.entry.color || vault.spaces.find((s) => s.id === props.entry.spaceId)?.color || '')
+// Custom properties go on the card so the hover border/shadow can reference the
+// same color without a second reactive class name.
+const cardStyle = computed<Record<string, string> | undefined>(() => {
+  const color = accent.value
+  if (!color) return undefined
+  return {
+    '--card-accent': color,
+    backgroundImage: `radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, ${color} 12%, transparent), transparent 62%)`,
+  }
+})
 const { t, locale } = useI18n()
 
 // Every non-empty field is shown, with no cap: the card is the entry's summary,
@@ -80,9 +93,11 @@ const updated = computed(() => {
 
 <template>
   <div
-    class="group cursor-pointer rounded-xl border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+    class="group relative cursor-pointer overflow-hidden rounded-xl border bg-card p-5 transition-all duration-200 hover:-translate-y-0.5 hover:[border-color:color-mix(in_srgb,var(--card-accent)_45%,transparent)] hover:[box-shadow:0_10px_28px_-16px_var(--card-accent)]"
+    :style="cardStyle"
     @click="emit('open')"
   >
+    <span v-if="accent" class="pointer-events-none absolute inset-y-0 left-0 w-1" :style="{ backgroundColor: accent }" />
     <div class="flex items-start gap-3">
       <span :class="['grid size-9 shrink-0 place-items-center rounded-lg', meta.tile]">
         <component :is="icon" class="size-4.5" />

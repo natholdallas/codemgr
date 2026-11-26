@@ -1,24 +1,30 @@
-// TOML bridge. Importing flattens an arbitrary TOML tree into vault entries;
-// exporting emits one table per entry with `_`-prefixed metadata so a
-// re-import updates the same records instead of duplicating them.
+// TOML bridge. Importing converts an arbitrary TOML tree into vault entries
+// structurally — one entry per table, grouped by table path — with no guessing
+// from field values. Exporting emits one table per entry with `__`-prefixed
+// metadata so a re-import updates the same records instead of duplicating them.
 //
 // Framework-free: no Nuxt auto-imports, no store access, so it is usable from
-// the import dialog, the TOML editor and (in principle) plain Node.
+// the import dialog and (in principle) plain Node.
 import { parse, stringify } from 'smol-toml'
-import { PROTOTYPE_KEYS } from './types'
+import { isHexColor, PROTOTYPE_KEYS } from './types'
 import type { EntryKind, VaultEntry, VaultField, VaultSource, VaultSpace } from './types'
 
 export interface ParsedEntry {
   title: string
   kind: EntryKind
+  group: string
+  // True when the file named the group explicitly (`__group`), including as an
+  // empty string: only then may a re-import overwrite a renamed group.
+  groupExplicit: boolean
   tags: string[]
   fields: VaultField[]
   notes: string
   url: string
+  color?: string
   source: VaultSource
   meta: { id?: string }
   // Problems that made a fragment of this entry unusable (a dropped field, an
-  // unknown `_kind`). The import dialog surfaces them; the entry is still used.
+  // unknown `__kind`). The import dialog surfaces them; the entry is still used.
   warnings?: string[]
 }
 
@@ -31,8 +37,8 @@ const KINDS: EntryKind[] = ['login', 'key', 'server', 'note', 'custom']
 // Metadata lives in the `__` namespace; real exports write it there. The
 // single-underscore names are only read, so files exported by an older build
 // still re-import with their id, title and tags intact.
-const LEGACY_META_KEYS = ['_id', '_title', '_kind', '_tags', '_notes', '_url'] as const
-const META_KEYS = ['__id', '__title', '__kind', '__tags', '__notes', '__url', ...LEGACY_META_KEYS]
+const LEGACY_META_KEYS = ['_id', '_title', '_kind', '_tags', '_notes', '_url', '_group', '_color'] as const
+const META_KEYS = ['__id', '__title', '__kind', '__tags', '__notes', '__url', '__group', '__color', ...LEGACY_META_KEYS]
 
 /** Metadata value, preferring the current `__` name over the legacy `_` one. */
 function metaValue(meta: Record<string, unknown>, name: string): unknown {
@@ -68,17 +74,6 @@ const scalarList = (v: unknown): string[] | null => {
 
 export function isSecretKey(key: string): boolean {
   return SECRET_PATTERN.test(key)
-}
-
-export function inferKind(fields: VaultField[]): EntryKind {
-  const keys = fields.map((f) => f.key.toLowerCase())
-  const has = (k: string) => keys.includes(k)
-  const account = ['username', 'email', 'phone', 'account'].some(has)
-  if (has('value') && !account) return 'key'
-  if (has('host') || has('port')) return 'server'
-  if (!has('password') && keys.some((k) => ['key', 'token', 'secret', 'private', 'credential'].some((t) => k.includes(t)))) return 'key'
-  if (has('password') || account) return 'login'
-  return 'note'
 }
 
 /** Bare TOML key from a title: lowercase ASCII, no dots (they would nest). */
@@ -134,49 +129,51 @@ function splitTable(table: Record<string, unknown>): Bucket {
   return bucket
 }
 
-function tagsFrom(segments: string[], bucket: Bucket, kind: EntryKind, baseTags: string[] | undefined) {
+// Only what the file itself says about tags: user-entered extra tags plus the
+// `__tags` metadata. No filename, section path or kind is added.
+function tagsFrom(bucket: Bucket, baseTags: string[] | undefined): string[] {
   const raw = metaValue(bucket.meta, 'tags')
   const extra = Array.isArray(raw) ? raw.map((t) => scalarText(t) ?? '') : []
-  const top = segments.length > 1 ? stripIndex(segments[0] ?? '') : ''
-  const tags = [...(baseTags ?? []), top, ...extra, kind].map((t) => t.trim()).filter(Boolean)
+  const tags = [...(baseTags ?? []), ...extra].map((t) => t.trim()).filter(Boolean)
   return [...new Set(tags)]
 }
 
-function buildEntry(segments: string[], bucket: Bucket, opts: ParseOptions): ParsedEntry {
+// Array indices are noise (`apple[0]`, `apple[1]` are the same table), the rest
+// of the path is meaningful (`bank.agricultural` is its own group).
+const groupFromSegments = (segments: string[]): string => segments.map(stripIndex).filter(Boolean).join('.')
+
+function buildEntry(segments: string[], bucket: Bucket, opts: ParseOptions, rootScalar = false): ParsedEntry {
   const fields = orderFields(bucket.fields)
   const metaKind = scalarText(metaValue(bucket.meta, 'kind')) as EntryKind | null
-  const kind = metaKind && KINDS.includes(metaKind) ? metaKind : inferKind(fields)
-  // A key entry's single payload field is the credential itself, whatever it is
-  // called: `value` in key.toml-style files, `key` elsewhere.
+  // Structural only: a table says which keys it has, never what the record
+  // means, so anything without an explicit `__kind` stays a plain custom record.
+  const kind = metaKind && KINDS.includes(metaKind) ? metaKind : 'custom'
+  // A declared key entry's payload is the credential itself, whatever it is
+  // named: `value` in key.toml-style files.
   if (kind === 'key' && fields.length === 1 && fields[0]) fields[0].secret = true
-  // Structured key records (`[[key.openrouter]]`) name their payload `value`,
-  // which matches no secret keyword.
   if (kind === 'key') {
     for (const field of fields) {
       if (field.key.toLowerCase() === 'value') field.secret = true
     }
   }
-  // Titles come from the record itself before the section path: `[[aapanel]]`
-  // reads better as the server name than as `aapanel #1`.
-  const pickField = (keys: string[]) =>
-    keys
-      .map((key) => fields.find((field) => !field.secret && field.key.toLowerCase() === key && field.value.trim()))
-      .find(Boolean)
-      ?.value.split('\n')[0]
-
   const arrayIndex = /\[(\d+)\]$/.exec(segments.at(-1) ?? '')
-  const pathTitle = segments.map(stripIndex).filter(Boolean).join('.') || 'Untitled'
+  const pathTitle = groupFromSegments(segments) || 'Untitled'
+  // The table path is the title; the array index only disambiguates repeats.
   const title =
-    scalarText(metaValue(bucket.meta, 'title'))?.trim() ||
-    pickField(['name', 'title', 'label', 'description', 'remark']) ||
-    (arrayIndex ? pickField(['username', 'email', 'account', 'phone']) : '') ||
-    `${pathTitle}${arrayIndex ? ` #${Number(arrayIndex[1]) + 1}` : ''}`
+    scalarText(metaValue(bucket.meta, 'title'))?.trim() || `${pathTitle}${arrayIndex ? ` #${Number(arrayIndex[1]) + 1}` : ''}`
   const id = scalarText(metaValue(bucket.meta, 'id')) || undefined
   const url = scalarText(metaValue(bucket.meta, 'url')) || fields.find((f) => f.key.toLowerCase() === 'url')?.value || ''
+  // An explicit `__group` — even an empty one — owns the group, so an exported
+  // ungrouped entry re-imports as ungrouped instead of regaining its table path.
+  const metaGroup = scalarText(metaValue(bucket.meta, 'group'))
+  const groupExplicit = metaGroup !== null
+  const group = groupExplicit ? metaGroup.trim() : rootScalar ? '' : groupFromSegments(segments)
   const entry: ParsedEntry = {
     title,
     kind,
-    tags: tagsFrom(segments, bucket, kind, opts.baseTags),
+    group,
+    groupExplicit,
+    tags: tagsFrom(bucket, opts.baseTags),
     fields,
     notes: scalarText(metaValue(bucket.meta, 'notes')) || '',
     url: url.includes('\n') ? '' : url,
@@ -184,6 +181,8 @@ function buildEntry(segments: string[], bucket: Bucket, opts: ParseOptions): Par
     meta: { id },
   }
   if (bucket.warnings.length) entry.warnings = bucket.warnings
+  const color = scalarText(metaValue(bucket.meta, 'color'))
+  if (isHexColor(color)) entry.color = color
   return entry
 }
 
@@ -203,10 +202,11 @@ function walk(table: Record<string, unknown>, segments: string[], out: ParsedEnt
 }
 
 /**
- * Flatten a TOML document into entries.
+ * Flatten a TOML document into entries: one per table, titled and grouped by
+ * the table path. Nothing is inferred from field values.
  *
  * Root-level scalars are credential files (`key.toml`), so each becomes its own
- * entry titled by its key with a single `value` field.
+ * ungrouped entry titled by its key with a single `value` field.
  */
 export function parseVaultToml(text: string, opts: ParseOptions): ParsedEntry[] {
   const tree = parse(text) as Record<string, unknown>
@@ -221,7 +221,7 @@ export function parseVaultToml(text: string, opts: ParseOptions): ParsedEntry[] 
         nested: [],
         warnings: [],
       }
-      out.push(buildEntry([key], bucket, opts))
+      out.push(buildEntry([key], bucket, opts, true))
       continue
     }
     if (isTable(value)) walk(value, [key], out, opts)
@@ -237,9 +237,13 @@ function entryTable(entry: VaultEntry): Record<string, unknown> {
   table.__id = entry.id
   table.__title = entry.title
   table.__kind = entry.kind
+  // Always written, empty included: an exported ungrouped entry must re-import
+  // as ungrouped rather than picking up its export table name as a group.
+  table.__group = entry.group
   table.__tags = entry.tags
   if (entry.notes) table.__notes = entry.notes
   if (entry.url) table.__url = entry.url
+  if (entry.color) table.__color = entry.color
   for (const field of entry.fields) {
     const key = field.key.trim()
     // Skip keys TOML cannot express as a bare key or that would shadow the
@@ -252,16 +256,16 @@ function entryTable(entry: VaultEntry): Record<string, unknown> {
 
 /** Render one space (and its live entries) as plaintext TOML. */
 export function exportSpaceToml(space: VaultSpace, entries: VaultEntry[]): string {
-  const groups = new Map<string, VaultEntry[]>()
+  const bySlug = new Map<string, VaultEntry[]>()
   for (const entry of entries) {
     if (entry.deletedAt) continue
     const slug = slugify(entry.title)
-    const list = groups.get(slug)
+    const list = bySlug.get(slug)
     if (list) list.push(entry)
-    else groups.set(slug, [entry])
+    else bySlug.set(slug, [entry])
   }
   const root: Record<string, unknown> = Object.create(null)
-  for (const [slug, list] of groups) {
+  for (const [slug, list] of bySlug) {
     const tables = list.map(entryTable)
     root[slug] = tables.length === 1 ? tables[0] : tables
   }

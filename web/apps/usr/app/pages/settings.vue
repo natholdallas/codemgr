@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CloudOff, KeyRound, Link2, Lock, Palette, ShieldCheck, Trash2, Upload, UserRound } from '@lucide/vue'
 import { toast } from 'vue-sonner'
+import { downloadTomlFile } from '~/lib/vault/download'
 import { locales } from '~/lib/locale'
 import { Apis, ProfileIn, ResetPasswordIn } from '~/lib/sdk'
 import type { TelegramAuth } from '~/lib/sdk'
@@ -78,6 +79,7 @@ const boundTelegram = computed(() => !!profile.value.telegramName)
 const masterOpen = ref(false)
 const resetOpen = ref(false)
 const deleteCloudOpen = ref(false)
+const exportOpen = ref(false)
 const resetText = ref('')
 const busy = ref(false)
 
@@ -86,16 +88,10 @@ watch(resetOpen, (open) => {
 })
 
 function exportAll() {
-  for (const space of vault.spaces) {
-    const text = vault.$exportSpaceToml(space.id)
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `${space.name.replace(/[^\w-]+/g, '-').toLowerCase() || 'vault'}.toml`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
+  exportOpen.value = false
+  // One file per space: merging them would hide which space each record
+  // belongs to behind a single filename.
+  for (const space of vault.spaces) downloadTomlFile(space.name, vault.$exportSpaceToml(space.id))
 }
 
 async function lockNow() {
@@ -296,9 +292,9 @@ async function resetVault() {
           <div class="flex flex-wrap items-center justify-between gap-3 py-3">
             <div class="space-y-0.5">
               <span class="text-sm font-medium">{{ $t('settings.vault.export') }}</span>
-              <p class="text-sm text-muted-foreground">{{ $t('vault.toml.desc') }}</p>
+              <p class="text-sm text-muted-foreground">{{ $t('settings.vault.export.desc') }}</p>
             </div>
-            <UiButton variant="outline" size="sm" @click="exportAll">
+            <UiButton variant="outline" size="sm" @click="exportOpen = true">
               <Upload class="size-3.5" />
               {{ $t('vault.export.toml') }}
             </UiButton>
@@ -344,6 +340,14 @@ async function resetVault() {
         :loading="busy"
         @cancel="deleteCloudOpen = false"
         @confirm="removeCloud"
+      />
+
+      <UixModal
+        v-model:open="exportOpen"
+        :title="$t('vault.export.confirm')"
+        :description="$t('vault.export.confirm.all')"
+        @cancel="exportOpen = false"
+        @confirm="exportAll"
       />
 
       <UixModal v-model:open="resetOpen" :title="$t('settings.vault.reset')" :description="$t('unlock.forgot.desc')" no-footer>

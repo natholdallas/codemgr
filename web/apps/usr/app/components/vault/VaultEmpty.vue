@@ -1,11 +1,7 @@
 <script setup lang="ts">
-import { Download, ListChecks, Plus, ShieldCheck } from '@lucide/vue'
+import { Plus, ShieldCheck } from '@lucide/vue'
 
-const emit = defineEmits<{
-  new: []
-  format: []
-  import: []
-}>()
+const emit = defineEmits<{ new: [] }>()
 </script>
 
 <template>
@@ -17,18 +13,10 @@ const emit = defineEmits<{
       <UiEmptyTitle>{{ $t('vault.empty.title') }}</UiEmptyTitle>
       <UiEmptyDescription>{{ $t('vault.empty.desc') }}</UiEmptyDescription>
     </UiEmptyHeader>
-    <UiEmptyContent class="flex-col justify-center sm:flex-row">
+    <UiEmptyContent class="justify-center">
       <UiButton @click="emit('new')">
         <Plus class="size-4" />
         {{ $t('vault.entry.new') }}
-      </UiButton>
-      <UiButton variant="outline" @click="emit('format')">
-        <ListChecks class="size-4" />
-        {{ $t('vault.format.new') }}
-      </UiButton>
-      <UiButton variant="outline" @click="emit('import')">
-        <Download class="size-4" />
-        {{ $t('vault.import') }}
       </UiButton>
     </UiEmptyContent>
   </UiEmpty>

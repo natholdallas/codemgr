@@ -19,16 +19,16 @@ const dragging = ref(false)
 const busy = ref(false)
 const parsed = ref<ParsedEntry[]>([])
 
-const basename = (name: string) => name.replace(/\.toml$/i, '')
-
 // Parse as soon as the files change so the preview counts and per-file errors are
 // visible before anything touches the vault.
 function parseAll() {
   parsed.value = []
   errors.value = []
+  // Only what the user typed here: the filename is no longer a tag, and each
+  // entry's group comes from its TOML table path.
+  const tags = extraTags.value.map((t) => t.trim()).filter(Boolean)
   for (const file of files.value) {
     try {
-      const tags = [...new Set([basename(file.name), ...extraTags.value.map((t) => t.trim()).filter(Boolean)])]
       parsed.value.push(...parseVaultToml(file.text, { file: file.name, baseTags: tags }))
     } catch (err) {
       errors.value.push({ file: file.name, message: err instanceof Error ? err.message : String(err) })
@@ -85,7 +85,7 @@ function setTarget(value: unknown) {
 
 async function run() {
   if (!parsed.value.length) {
-    toast.warning($t('vault.toml.empty'))
+    toast.warning($t('vault.import.empty'))
     return
   }
   if (!target.value) {
@@ -149,6 +149,7 @@ async function run() {
       <p class="text-sm text-muted-foreground">
         {{ $t('vault.import.preview', { files: files.length, entries: parsed.length }) }}
       </p>
+      <p class="text-xs text-muted-foreground">{{ $t('vault.import.group.hint') }}</p>
 
       <div class="grid gap-3 sm:grid-cols-2">
         <div class="space-y-1.5">

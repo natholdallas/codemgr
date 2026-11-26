@@ -27,9 +27,9 @@ import {
   writeLocalEnvelope,
   writeSessionDek,
 } from '~/lib/vault/storage'
-import { exportSpaceToml, parseVaultToml } from '~/lib/vault/toml'
+import { exportSpaceToml } from '~/lib/vault/toml'
 import type { ParsedEntry } from '~/lib/vault/toml'
-import { DOC_VERSION, SPACE_COLORS, isVaultIcon } from '~/lib/vault/types'
+import { DEFAULT_SPACE_COLOR, DOC_VERSION, isHexColor, isVaultIcon } from '~/lib/vault/types'
 import type { EntryKind, VaultDoc, VaultEnvelope, VaultEntry, VaultField, VaultRecordField, VaultRecordType, VaultSpace } from '~/lib/vault/types'
 
 export const ALL_SPACES = 'all'
@@ -42,22 +42,21 @@ export interface EntryInput {
   title: string
   spaceId: string
   kind: EntryKind
+  group: string
   tags: string[]
   fields: VaultField[]
   typeId?: string
   icon?: string
+  color?: string
   notes: string
   url: string
 }
 
 export interface ImportOptions {
   spaceId: string
-  baseTags?: string[]
   mode: 'merge' | 'replace'
-  // Already-parsed entries (the dialog parses per file so it can report the
-  // file that failed); `texts` is the raw-text convenience path.
-  entries?: ParsedEntry[]
-  texts?: { name: string; text: string }[]
+  // Parsed by the dialog, per file, so it can report which file failed.
+  entries: ParsedEntry[]
 }
 
 export const useVaultStore = defineStore('vault', () => {
@@ -93,6 +92,8 @@ export const useVaultStore = defineStore('vault', () => {
   const liveSpaces = computed(() => (doc.value?.spaces ?? []).filter((s) => !s.deletedAt))
   const liveEntries = computed(() => (doc.value?.entries ?? []).filter((e) => !e.deletedAt))
   const liveTypes = computed(() => (doc.value?.types ?? []).filter((t) => !t.deletedAt))
+  // System presets the user switched off; tolerates a locked vault.
+  const disabledPresets = computed(() => doc.value?.disabledPresets ?? [])
 
   const scopedEntries = computed(() => {
     const spaceId = activeSpaceId.value
@@ -428,9 +429,20 @@ export const useVaultStore = defineStore('vault', () => {
     }
   }
 
+  /**
+   * True when the last merge finished with nothing left to push. A function
+   * body reads the settled ref without the narrow type the `saving` assignment
+   * in `$syncNow` would otherwise leave behind.
+   */
+  const mergedCleanly = () => syncState.value === 'idle' && !pendingConflict.value
+
   async function $syncNow(): Promise<void> {
-    if (!signedIn() || !envelope.value) return
+    if (!signedIn() || !envelope.value || !dek || merging) return
+    // `saving` drives the spinning button; $mergeRemote settles it back to
+    // `idle`, `offline` or a conflict, so the toast only fires on real success.
+    syncState.value = 'saving'
     await $mergeRemote()
+    if (mergedCleanly()) toast.success($t('sync.done'))
   }
 
   async function $create(master: string): Promise<void> {
@@ -519,7 +531,7 @@ export const useVaultStore = defineStore('vault', () => {
       id: uuid(),
       name,
       description: input.description?.trim() ?? '',
-      color: input.color || SPACE_COLORS[0],
+      color: input.color || DEFAULT_SPACE_COLOR,
       // Append after the last live space; `liveSpaces` is already in sidebar
       // order, so the new one lands at the bottom of the list.
       order: liveSpaces.value.reduce((max, s) => Math.max(max, s.order + 1), 0),
@@ -621,6 +633,24 @@ export const useVaultStore = defineStore('vault', () => {
     await $save()
   }
 
+  /**
+   * Switch a system preset on or off. Disabling only hides it from the picker:
+   * formats already created from it stay untouched.
+   */
+  async function $setPresetEnabled(id: string, enabled: boolean): Promise<void> {
+    const d = requireDoc()
+    const preset = id.trim()
+    if (!preset) return
+    const disabled = d.disabledPresets.includes(preset)
+    if (enabled === !disabled) return
+    const next = new Set(d.disabledPresets)
+    if (enabled) next.delete(preset)
+    else next.add(preset)
+    // Replace the array: mutating it in place would not be a new doc value.
+    d.disabledPresets = [...next]
+    await $save()
+  }
+
   async function $addEntry(input: EntryInput): Promise<VaultEntry> {
     const title = input.title.trim()
     if (!title) throw new Error('vault:entry.title')
@@ -631,6 +661,7 @@ export const useVaultStore = defineStore('vault', () => {
       spaceId: input.spaceId,
       title,
       kind: input.kind,
+      group: input.group.trim(),
       tags: [...new Set(input.tags.map((t) => t.trim()).filter(Boolean))],
       fields: input.fields.map((f) => ({ ...f, key: f.key.trim() })),
       typeId: input.typeId || undefined,
@@ -640,6 +671,7 @@ export const useVaultStore = defineStore('vault', () => {
       updatedAt: at,
     }
     if (isVaultIcon(input.icon)) entry.icon = input.icon
+    if (isHexColor(input.color)) entry.color = input.color
     requireDoc().entries.push(entry)
     await $save()
     return entry
@@ -650,11 +682,14 @@ export const useVaultStore = defineStore('vault', () => {
     Object.assign(entry, {
       ...patch,
       title: patch.title?.trim() ?? entry.title,
+      group: patch.group?.trim() ?? entry.group,
       tags: patch.tags ? [...new Set(patch.tags.map((t) => t.trim()).filter(Boolean))] : entry.tags,
       fields: patch.fields ? patch.fields.map((f) => ({ ...f, key: f.key.trim() })) : entry.fields,
       url: patch.url?.trim() ?? entry.url,
       // `icon: ''` clears the override; an absent key keeps it.
       icon: patch.icon !== undefined ? (isVaultIcon(patch.icon) ? patch.icon : undefined) : entry.icon,
+      // Same rule for the card color: `''` falls back to the space color.
+      color: patch.color !== undefined ? (isHexColor(patch.color) ? patch.color : undefined) : entry.color,
       updatedAt: now(),
     })
     await $save()
@@ -665,6 +700,26 @@ export const useVaultStore = defineStore('vault', () => {
     entry.deletedAt = now()
     entry.updatedAt = entry.deletedAt
     await $save()
+  }
+
+  /**
+   * Rename a group across one space's live entries. Groups are scoped to a
+   * space, so two spaces may each keep their own `apple` card; an empty name
+   * ungroups.
+   */
+  async function $renameGroup(spaceId: string, from: string, to: string): Promise<void> {
+    const source = from.trim()
+    const target = to.trim()
+    if (source === target) return
+    const at = now()
+    let changed = false
+    for (const entry of requireDoc().entries) {
+      if (entry.deletedAt || entry.spaceId !== spaceId || entry.group !== source) continue
+      entry.group = target
+      entry.updatedAt = at
+      changed = true
+    }
+    if (changed) await $save()
   }
 
   function matchExisting(parsed: ParsedEntry, spaceId: string, entries: VaultEntry[]): VaultEntry | undefined {
@@ -684,11 +739,17 @@ export const useVaultStore = defineStore('vault', () => {
         spaceId,
         title: parsed.title,
         kind: parsed.kind,
+        // A group the user renamed by hand survives a re-import of the original
+        // file; only a file that spells out `__group` may overwrite it.
+        group: parsed.groupExplicit ? parsed.group : target.group || parsed.group,
         tags: parsed.tags,
         fields: parsed.fields,
         notes: parsed.notes,
         url: parsed.url,
         source: parsed.source,
+        // A file that carries no `__color` must not wipe a card color the user
+        // picked after exporting it.
+        color: parsed.color ?? target.color,
         updatedAt: at,
       })
       return target
@@ -698,10 +759,12 @@ export const useVaultStore = defineStore('vault', () => {
       spaceId,
       title: parsed.title,
       kind: parsed.kind,
+      group: parsed.group,
       tags: parsed.tags,
       fields: parsed.fields,
       notes: parsed.notes,
       url: parsed.url,
+      color: parsed.color,
       source: parsed.source,
       createdAt: at,
       updatedAt: at,
@@ -711,10 +774,6 @@ export const useVaultStore = defineStore('vault', () => {
   async function $importToml(options: ImportOptions): Promise<{ created: number; updated: number }> {
     const d = requireDoc()
     findSpace(options.spaceId)
-    const parsed: ParsedEntry[] = options.entries ?? []
-    for (const file of options.texts ?? []) {
-      parsed.push(...parseVaultToml(file.text, { file: file.name, baseTags: options.baseTags }))
-    }
     const at = now()
     if (options.mode === 'replace') {
       for (const entry of d.entries) {
@@ -725,7 +784,7 @@ export const useVaultStore = defineStore('vault', () => {
     }
     let created = 0
     let updated = 0
-    for (const item of parsed) {
+    for (const item of options.entries) {
       const existing = matchExisting(item, options.spaceId, d.entries)
       if (existing) {
         applyParsed(existing, item, options.spaceId, at)
@@ -737,16 +796,6 @@ export const useVaultStore = defineStore('vault', () => {
     }
     await $save()
     return { created, updated }
-  }
-
-  /** Replace one space's entries from a (possibly hand-edited) TOML document. */
-  async function $replaceSpaceToml(spaceId: string, text: string): Promise<{ created: number; updated: number }> {
-    const name = liveSpaces.value.find((s) => s.id === spaceId)?.name ?? 'space'
-    return $importToml({
-      spaceId,
-      mode: 'replace',
-      entries: parseVaultToml(text, { file: `${name}.toml`, baseTags: [] }),
-    })
   }
 
   function $exportSpaceToml(spaceId: string): string {
@@ -861,6 +910,7 @@ export const useVaultStore = defineStore('vault', () => {
     spaces: liveSpaces,
     entries: liveEntries,
     types: liveTypes,
+    disabledPresets,
     filteredEntries,
     allTags,
     spaceCounts,
@@ -881,11 +931,12 @@ export const useVaultStore = defineStore('vault', () => {
     $addType,
     $updateType,
     $removeType,
+    $setPresetEnabled,
     $addEntry,
     $updateEntry,
     $removeEntry,
+    $renameGroup,
     $importToml,
-    $replaceSpaceToml,
     $exportSpaceToml,
     $changeMaster,
     $deleteRemote,

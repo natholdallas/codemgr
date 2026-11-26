@@ -2,9 +2,9 @@
 import { Plus, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { PROTOTYPE_KEYS } from '~/lib/vault/types'
-import type { VaultRecordField, VaultRecordType } from '~/lib/vault/types'
+import type { VaultPresetDraft, VaultRecordField, VaultRecordType } from '~/lib/vault/types'
 
-const props = defineProps<{ type: VaultRecordType | null }>()
+const props = defineProps<{ type: VaultRecordType | null; preset?: VaultPresetDraft | null }>()
 const open = defineModel<boolean>('open', { default: false })
 const vault = useVaultStore()
 
@@ -13,8 +13,10 @@ const saving = ref(false)
 
 watch(open, (isOpen) => {
   if (!isOpen) return
-  form.name = props.type?.name ?? ''
-  form.fields = props.type?.fields.length ? props.type.fields.map((f) => ({ ...f })) : [{ key: '', secret: false }]
+  // An edit wins over a picked preset: a stale draft must never leak into it.
+  const seed = props.type ?? props.preset ?? null
+  form.name = seed?.name ?? ''
+  form.fields = seed?.fields.length ? seed.fields.map((f) => ({ ...f })) : [{ key: '', secret: false }]
 })
 
 // Same rules as entry fields, minus per-record values: a format only names

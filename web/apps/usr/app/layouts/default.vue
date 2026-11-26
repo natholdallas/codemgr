@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { downloadTomlFile } from '~/lib/vault/download'
 import { ALL_SPACES, useVaultStore } from '~/stores/vault'
 import type { VaultSpace } from '~/lib/vault/types'
 
@@ -13,40 +14,33 @@ const {
   entryOpen,
   editingEntry,
   importOpen,
-  tomlOpen,
   spaceOpen,
   editingSpace,
-  typesOpen,
   typeOpen,
   editingType,
+  editingTypePreset,
   openEntry,
   openSpace,
 } = useVaultDialogs()
 const isMobileOpen = ref(false)
+const exportOpen = ref(false)
 
 const scopedSpaceId = computed(() => (vault.activeSpaceId === ALL_SPACES ? undefined : vault.activeSpaceId))
-const tomlSpaceId = computed(() => scopedSpaceId.value ?? vault.spaces[0]?.id ?? '')
+const activeSpace = computed(() => vault.spaces.find((s) => s.id === vault.activeSpaceId) ?? null)
 
 function downloadToml(space: VaultSpace) {
-  const text = vault.$exportSpaceToml(space.id)
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = `${space.name.replace(/[^\w-]+/g, '-').toLowerCase() || 'vault'}.toml`
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadTomlFile(space.name, vault.$exportSpaceToml(space.id))
 }
 
 // "Export" means the space in view; with no space selected every space is
 // exported as its own file rather than one merged document.
 function exportToml() {
+  exportOpen.value = false
   if (vault.activeSpaceId === ALL_SPACES) {
     for (const space of vault.spaces) downloadToml(space)
     return
   }
-  const space = vault.spaces.find((s) => s.id === vault.activeSpaceId)
-  if (space) downloadToml(space)
+  if (activeSpace.value) downloadToml(activeSpace.value)
 }
 </script>
 
@@ -56,20 +50,26 @@ function exportToml() {
       <UiSheetContent side="left" class="w-70 p-0" :show-close-button="false">
         <UiSheetTitle class="sr-only">{{ $t('app.name') }}</UiSheetTitle>
         <UiSheetDescription class="sr-only">{{ $t('vault.spaces') }}</UiSheetDescription>
-        <VaultSidebar @new-space="openSpace()" @edit-space="openSpace($event)" @import="importOpen = true" @navigate="isMobileOpen = false" />
+        <VaultSidebar
+          @new-space="openSpace()"
+          @edit-space="openSpace($event)"
+          @import="importOpen = true"
+          @export-toml="exportOpen = true"
+          @navigate="isMobileOpen = false"
+        />
       </UiSheetContent>
     </UiSheet>
 
-    <VaultSidebar class="hidden md:flex" @new-space="openSpace()" @edit-space="openSpace($event)" @import="importOpen = true" />
+    <VaultSidebar
+      class="hidden md:flex"
+      @new-space="openSpace()"
+      @edit-space="openSpace($event)"
+      @import="importOpen = true"
+      @export-toml="exportOpen = true"
+    />
 
     <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
-      <VaultTopbar
-        @menu="isMobileOpen = true"
-        @new-entry="openEntry()"
-        @import="importOpen = true"
-        @export-toml="exportToml"
-        @edit-toml="tomlOpen = true"
-      />
+      <VaultTopbar @menu="isMobileOpen = true" @new-entry="openEntry()" />
       <main class="min-h-0 flex-1 overflow-hidden">
         <slot />
       </main>
@@ -77,10 +77,19 @@ function exportToml() {
     </div>
 
     <VaultEntryDialog v-model:open="entryOpen" :entry="editingEntry" :default-space-id="scopedSpaceId" />
-    <VaultRecordTypesDialog v-model:open="typesOpen" />
-    <VaultRecordTypeDialog v-model:open="typeOpen" :type="editingType" />
+    <VaultRecordTypeDialog v-model:open="typeOpen" :type="editingType" :preset="editingTypePreset" />
     <VaultSpaceDialog v-model:open="spaceOpen" :space="editingSpace" />
     <VaultImportDialog v-model:open="importOpen" :space-id="scopedSpaceId" />
-    <VaultTomlDialog v-model:open="tomlOpen" :space-id="tomlSpaceId" />
+    <UixModal
+      v-model:open="exportOpen"
+      :title="$t('vault.export.confirm')"
+      :description="
+        vault.activeSpaceId === ALL_SPACES
+          ? $t('vault.export.confirm.all')
+          : $t('vault.export.confirm.space', { space: activeSpace?.name ?? '' })
+      "
+      @cancel="exportOpen = false"
+      @confirm="exportToml"
+    />
   </div>
 </template>

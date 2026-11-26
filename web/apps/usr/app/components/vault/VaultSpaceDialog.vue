@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
-import { SPACE_COLORS } from '~/lib/vault/types'
+import { DEFAULT_SPACE_COLOR } from '~/lib/vault/types'
 import type { VaultSpace } from '~/lib/vault/types'
 
 const props = defineProps<{ space: VaultSpace | null }>()
 const open = defineModel<boolean>('open', { default: false })
 const vault = useVaultStore()
 
-const form = reactive({ name: '', description: '', color: SPACE_COLORS[0] as string, icon: '' })
+const form = reactive({ name: '', description: '', color: DEFAULT_SPACE_COLOR as string, icon: '' })
 const saving = ref(false)
 const confirming = ref(false)
 
@@ -17,7 +17,7 @@ watch(open, (isOpen) => {
   if (!isOpen) return
   form.name = props.space?.name ?? ''
   form.description = props.space?.description ?? ''
-  form.color = props.space?.color ?? SPACE_COLORS[0]
+  form.color = props.space?.color ?? DEFAULT_SPACE_COLOR
   form.icon = props.space?.icon ?? ''
 })
 
@@ -84,20 +84,7 @@ async function remove() {
 
       <div class="space-y-2">
         <UiLabel>{{ $t('vault.space.color') }}</UiLabel>
-        <div class="flex items-center gap-2">
-          <button
-            v-for="color in SPACE_COLORS"
-            :key="color"
-            type="button"
-            :class="[
-              'size-7 rounded-full ring-offset-2 ring-offset-background transition-all',
-              form.color === color ? 'ring-2 ring-ring' : 'hover:scale-110',
-            ]"
-            :style="{ backgroundColor: color }"
-            :aria-label="color"
-            @click="form.color = color"
-          />
-        </div>
+        <VaultColorPicker v-model="form.color" />
       </div>
 
       <div v-if="space" class="rounded-lg border border-dashed p-3">

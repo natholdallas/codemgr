@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Search, Trash2 } from '@lucide/vue'
+import { Pencil, Search, Trash2 } from '@lucide/vue'
+import { toast } from 'vue-sonner'
 import { ALL_SPACES } from '~/stores/vault'
 import type { VaultEntry } from '~/lib/vault/types'
 
@@ -9,64 +10,75 @@ definePageMeta({
 })
 
 const vault = useVaultStore()
-const { openEntry, importOpen, openType } = useVaultDialogs()
+const { openEntry } = useVaultDialogs()
 const { filteredEntries } = storeToRefs(vault)
 
 interface EntryGroup {
   key: string
+  // The stored group label; empty means the ungrouped bucket.
+  group: string
   label: string
+  spaceId: string
   spaceName: string
-  manual: boolean
+  spaceColor: string
   entries: VaultEntry[]
 }
 
-// Entries keep the TOML section they came from (`behaviour[0]`, `[bank.agricultural]`),
-// so grouping by it keeps records of one section adjacent instead of scattered.
-function sectionOf(entry: VaultEntry): string {
-  const path = entry.source?.path ?? ''
-  if (!path) return ''
-  // Root-scalar credential files (key.toml) have no section: keep those records
-  // together under the file name instead of making one group per key.
-  const rootScalar = !path.includes('.') && !path.includes('[') && entry.kind === 'key'
-  if (rootScalar) return entry.source?.file ?? ''
-  const first = path.split('.')[0] ?? ''
-  // A top-level `[[xxxxx]]` array expands to `xxxxx[0]`, `xxxxx[1]`, ...: the
-  // key is often random and the index says nothing, so the file name is the
-  // only meaningful group label.
-  if (/\[\d+\]$/.test(first)) return (entry.source?.file ?? '').replace(/\.toml$/i, '')
-  return first.replace(/\[\d+\]$/, '')
-}
-
+// Groups belong to a space: two spaces may each keep their own `apple` card.
 const groups = computed<EntryGroup[]>(() => {
   const byKey = new Map<string, EntryGroup>()
   for (const entry of filteredEntries.value) {
-    const section = sectionOf(entry)
-    const label = section || $t('vault.group.manual')
-    const key = `${entry.spaceId}::${entry.source?.file ?? ''}::${label}`
+    const key = `${entry.spaceId}::${entry.group}`
     let group = byKey.get(key)
     if (!group) {
+      const space = vault.spaces.find((s) => s.id === entry.spaceId)
       group = {
         key,
-        label,
-        spaceName: vault.spaces.find((space) => space.id === entry.spaceId)?.name ?? '',
-        manual: !section,
+        group: entry.group,
+        label: entry.group || $t('vault.group.none'),
+        spaceId: entry.spaceId,
+        spaceName: space?.name ?? '',
+        spaceColor: space?.color ?? '',
         entries: [],
       }
       byKey.set(key, group)
     }
     group.entries.push(entry)
   }
-  return [...byKey.values()].sort((a, b) => Number(a.manual) - Number(b.manual) || a.label.localeCompare(b.label))
+  // Ungrouped last, then alphabetically: grouped records are the ones the user
+  // organized on purpose.
+  return [...byKey.values()].sort((a, b) => Number(!a.group) - Number(!b.group) || a.label.localeCompare(b.label))
 })
 
 const detail = ref<VaultEntry | null>(null)
 const detailOpen = ref(false)
 const removing = ref<VaultEntry | null>(null)
 
+const renameOpen = ref(false)
+const renameTarget = ref<EntryGroup | null>(null)
+const renameDraft = ref('')
+
 function openDetail(entry?: VaultEntry) {
   if (!entry) return
   detail.value = entry
   detailOpen.value = true
+}
+
+function openRename(group: EntryGroup) {
+  renameTarget.value = group
+  renameDraft.value = group.group
+  renameOpen.value = true
+}
+
+async function renameGroup() {
+  if (!renameTarget.value) return
+  try {
+    await vault.$renameGroup(renameTarget.value.spaceId, renameTarget.value.group, renameDraft.value)
+    renameOpen.value = false
+    renameTarget.value = null
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err))
+  }
 }
 
 async function removeEntry() {
@@ -80,7 +92,7 @@ async function removeEntry() {
 <template>
   <ComCtl scroll>
     <div class="p-3 sm:p-4">
-      <VaultEmpty v-if="!vault.entries.length" @new="openEntry()" @format="openType()" @import="importOpen = true" />
+      <VaultEmpty v-if="!vault.entries.length" @new="openEntry()" />
 
       <UiEmpty v-else-if="!filteredEntries.length" class="mx-auto mt-10 max-w-md border-dashed">
         <UiEmptyHeader>
@@ -97,8 +109,19 @@ async function removeEntry() {
           <header class="mb-3 flex items-center gap-2">
             <h2 class="text-sm font-semibold">{{ group.label }}</h2>
             <UiBadge variant="secondary" class="font-normal">{{ group.entries.length }}</UiBadge>
-            <span v-if="vault.activeSpaceId === ALL_SPACES" class="ml-auto truncate text-xs text-muted-foreground">
-              {{ group.spaceName }}
+            <UiButton
+              v-if="group.group"
+              variant="ghost"
+              size="icon"
+              class="size-6"
+              :title="$t('vault.group.rename')"
+              @click="openRename(group)"
+            >
+              <Pencil class="size-3.5" />
+            </UiButton>
+            <span v-if="vault.activeSpaceId === ALL_SPACES" class="ml-auto flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <span class="size-2 shrink-0 rounded-full" :style="{ backgroundColor: group.spaceColor }" />
+              <span class="truncate">{{ group.spaceName }}</span>
             </span>
           </header>
           <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -131,6 +154,12 @@ async function removeEntry() {
           <Trash2 class="size-4" />
           {{ removing?.title }}
         </p>
+      </UixModal>
+      <UixModal v-model:open="renameOpen" :title="$t('vault.group.rename')" @cancel="renameOpen = false" @confirm="renameGroup">
+        <div class="space-y-1.5">
+          <UiLabel for="group-name">{{ $t('vault.group.name') }}</UiLabel>
+          <UiInput id="group-name" v-model="renameDraft" :placeholder="$t('vault.group.name.placeholder')" />
+        </div>
       </UixModal>
     </template>
   </ComCtl>

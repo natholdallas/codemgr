@@ -14,11 +14,13 @@ const vault = useVaultStore()
 const form = reactive({
   title: '',
   spaceId: '',
+  group: '',
   kind: 'login' as EntryKind,
   tags: [] as string[],
   fields: [] as VaultField[],
   typeId: '',
   icon: '',
+  color: '',
   notes: '',
   url: '',
 })
@@ -32,6 +34,17 @@ const activeType = computed(() => vault.types.find((t) => t.id === form.typeId) 
 const formatMissing = computed(() => !!props.entry?.typeId && !form.typeId)
 
 const NO_FORMAT = '__none__'
+
+// Groups already used in the selected space, offered as datalist suggestions so
+// a new record joins an existing card instead of creating a near-duplicate.
+const groupOptions = computed(() => {
+  const seen = new Set<string>()
+  for (const entry of vault.entries) {
+    if (entry.spaceId !== form.spaceId || !entry.group) continue
+    seen.add(entry.group)
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b))
+})
 
 function setSpace(value: unknown) {
   form.spaceId = String(value)
@@ -68,12 +81,14 @@ watch(open, (isOpen) => {
   const spaceId = props.entry?.spaceId ?? props.defaultSpaceId ?? vault.spaces[0]?.id ?? ''
   form.title = props.entry?.title ?? ''
   form.spaceId = vault.spaces.some((s) => s.id === spaceId) ? spaceId : (vault.spaces[0]?.id ?? '')
+  form.group = props.entry?.group ?? ''
   form.kind = props.entry?.kind ?? 'login'
   form.tags = [...(props.entry?.tags ?? [])]
   form.fields = props.entry ? props.entry.fields.map((f) => ({ ...f })) : defaults()
   form.notes = props.entry?.notes ?? ''
   form.url = props.entry?.url ?? ''
   form.icon = props.entry?.icon ?? ''
+  form.color = props.entry?.color ?? ''
   const typeId = props.entry?.typeId ?? ''
   form.typeId = vault.types.some((t) => t.id === typeId) ? typeId : ''
 })
@@ -110,11 +125,13 @@ async function save() {
     const payload = {
       title: form.title,
       spaceId: form.spaceId,
+      group: form.group,
       kind: form.kind,
       tags: form.tags,
       fields: form.fields.filter((f) => f.key.trim()),
       typeId: form.typeId || undefined,
       icon: form.icon,
+      color: form.color,
       notes: form.notes,
       url: form.url,
     }
@@ -156,6 +173,13 @@ async function save() {
           </UiSelect>
         </div>
         <div class="space-y-1.5">
+          <UiLabel for="entry-group">{{ $t('vault.entry.group') }}</UiLabel>
+          <UiInput id="entry-group" v-model="form.group" list="entry-group-options" :placeholder="$t('vault.group.none')" />
+          <datalist id="entry-group-options">
+            <option v-for="option in groupOptions" :key="option" :value="option" />
+          </datalist>
+        </div>
+        <div class="space-y-1.5">
           <UiLabel for="entry-kind">{{ $t('vault.entry.kind') }}</UiLabel>
           <UiSelect :model-value="form.kind" @update:model-value="setKind">
             <UiSelectTrigger id="entry-kind" class="w-full">
@@ -185,6 +209,10 @@ async function save() {
         <div class="space-y-2 sm:col-span-2">
           <UiLabel>{{ $t('vault.entry.icon') }}</UiLabel>
           <VaultIconPicker v-model="form.icon" />
+        </div>
+        <div class="space-y-2 sm:col-span-2">
+          <UiLabel>{{ $t('vault.entry.color') }}</UiLabel>
+          <VaultColorPicker v-model="form.color" inherit :inherit-label="$t('vault.color.inherit')" />
         </div>
       </div>
 

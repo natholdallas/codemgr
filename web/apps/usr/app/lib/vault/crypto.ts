@@ -67,7 +67,7 @@ async function decryptDoc(dek: CryptoKey, iv: Uint8Array, data: string): Promise
   }
   try {
     const doc = JSON.parse(new TextDecoder().decode(plain)) as VaultDoc
-    if (!doc || (doc.v !== 1 && doc.v !== DOC_VERSION) || !Array.isArray(doc.spaces) || !Array.isArray(doc.entries)) {
+    if (!doc || (doc.v !== 1 && doc.v !== 2 && doc.v !== DOC_VERSION) || !Array.isArray(doc.spaces) || !Array.isArray(doc.entries)) {
       throw new Error(CORRUPT)
     }
     return doc
