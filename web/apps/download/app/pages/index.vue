@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {
+  Apple,
   ArrowRight,
   Boxes,
   Check,
@@ -14,13 +15,14 @@ import {
   Monitor,
   RefreshCw,
   ShieldCheck,
+  Smartphone,
   Tags,
   Terminal,
 } from '@lucide/vue'
 
 definePageMeta({ name: 'index' })
 
-type DesktopPlatform = 'linux' | 'windows'
+type DesktopPlatform = 'linux' | 'windows' | 'macos' | 'android'
 
 interface ReleaseFile {
   name: string
@@ -45,9 +47,11 @@ const EMPTY_MANIFEST: ReleaseManifest = {
 
 const FILE_KINDS: Record<string, string> = {
   appimage: 'AppImage',
+  apk: 'APK',
   deb: 'DEB',
-  msi: 'MSI',
+  dmg: 'DMG',
   exe: 'EXE',
+  msi: 'MSI',
 }
 
 const manifest = ref<ReleaseManifest>({ ...EMPTY_MANIFEST })
@@ -58,6 +62,8 @@ const recommended = ref<DesktopPlatform | null>(null)
 // "Installation" label avoids promising a download that is not there.
 const heroCta = computed(() => {
   if (recommended.value === 'windows' && windowsFiles.value.length) return $t('download.windows')
+  if (recommended.value === 'macos' && macosFiles.value.length) return $t('download.macos')
+  if (recommended.value === 'android' && androidFiles.value.length) return $t('download.android')
   if (recommended.value === 'linux' && linuxFiles.value.length) return $t('download.linux')
   return $t('download.install')
 })
@@ -67,6 +73,8 @@ const webUrl = computed(() => manifest.value.webUrl || EMPTY_MANIFEST.webUrl)
 
 const linuxFiles = computed(() => manifest.value.files.filter((file) => platformOf(file.name) === 'linux'))
 const windowsFiles = computed(() => manifest.value.files.filter((file) => platformOf(file.name) === 'windows'))
+const macosFiles = computed(() => manifest.value.files.filter((file) => platformOf(file.name) === 'macos'))
+const androidFiles = computed(() => manifest.value.files.filter((file) => platformOf(file.name) === 'android'))
 
 const trust = [
   { key: 'download.feature.e2e', icon: ShieldCheck },
@@ -97,6 +105,8 @@ function platformOf(name: string): DesktopPlatform | null {
   const file = name.toLowerCase()
   if (file.endsWith('.appimage') || file.endsWith('.deb')) return 'linux'
   if (file.endsWith('.msi') || file.endsWith('.exe')) return 'windows'
+  if (file.endsWith('.dmg')) return 'macos'
+  if (file.endsWith('.apk')) return 'android'
   return null
 }
 
@@ -117,7 +127,9 @@ function shortHash(hash: string) {
 onMounted(async () => {
   const ua = navigator.userAgent
   if (/Windows/i.test(ua)) recommended.value = 'windows'
-  else if (/Linux/i.test(ua) && !/Android/i.test(ua)) recommended.value = 'linux'
+  else if (/Android/i.test(ua)) recommended.value = 'android'
+  else if (/Macintosh|Mac OS X/i.test(ua)) recommended.value = 'macos'
+  else if (/Linux/i.test(ua)) recommended.value = 'linux'
 
   try {
     const data = await $fetch<Partial<ReleaseManifest>>('/releases.json')
@@ -289,10 +301,13 @@ onMounted(async () => {
       <div class="mx-auto w-full max-w-6xl px-4 py-16 md:py-24">
         <div class="max-w-2xl">
           <h2 class="text-3xl font-bold tracking-tight">{{ $t('download.install') }}</h2>
-          <p class="mt-3 text-muted-foreground">{{ $t('download.web') }} · {{ $t('download.linux') }} · {{ $t('download.windows') }}</p>
+          <p class="mt-3 text-muted-foreground">
+            {{ $t('download.web') }} · {{ $t('download.linux') }} · {{ $t('download.windows') }} · {{ $t('download.macos') }} ·
+            {{ $t('download.android') }}
+          </p>
         </div>
 
-        <div class="mt-10 grid gap-4 md:grid-cols-3">
+        <div class="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <!-- linux -->
           <UiCard class="flex flex-col">
             <UiCardHeader>
@@ -378,6 +393,102 @@ onMounted(async () => {
                     </a>
                   </UiButton>
                 </div>
+              </template>
+              <div v-else class="flex flex-1 items-center">
+                <UiButton disabled variant="secondary" class="w-full">
+                  {{ $t('download.coming.soon') }}
+                </UiButton>
+              </div>
+            </UiCardContent>
+          </UiCard>
+
+          <!-- macos -->
+          <UiCard class="flex flex-col">
+            <UiCardHeader>
+              <div class="flex items-start justify-between gap-2">
+                <span class="grid size-10 place-items-center rounded-lg bg-muted">
+                  <Apple class="size-5" />
+                </span>
+                <UiBadge v-if="recommended === 'macos'" variant="secondary">
+                  {{ $t('download.recommended') }}
+                </UiBadge>
+              </div>
+              <UiCardTitle class="mt-4 text-base">{{ $t('download.macos') }}</UiCardTitle>
+              <UiCardDescription>{{ $t('download.version', { v: version }) }}</UiCardDescription>
+            </UiCardHeader>
+
+            <UiCardContent class="flex flex-1 flex-col gap-3">
+              <template v-if="macosFiles.length">
+                <div v-for="file in macosFiles" :key="file.name" class="rounded-lg border bg-background/60 p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <UiBadge variant="outline">{{ fileKind(file.name) }}</UiBadge>
+                    <span class="text-xs text-muted-foreground">
+                      {{ $t('download.size', { size: fileSize(file) }) }}
+                    </span>
+                  </div>
+                  <div class="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span class="shrink-0 font-medium">{{ $t('download.sha') }}</span>
+                    <span class="truncate font-mono">{{ shortHash(file.sha256) }}</span>
+                    <UixCopyable :text="file.sha256" :aria-label="$t('download.sha')" class="size-6 shrink-0 px-0">
+                      <Copy class="size-3.5" />
+                    </UixCopyable>
+                  </div>
+                  <UiButton as-child size="sm" class="mt-3 w-full">
+                    <a :href="file.url" download>
+                      <Download class="size-4" />
+                      {{ fileKind(file.name) }}
+                    </a>
+                  </UiButton>
+                </div>
+                <p class="text-xs text-muted-foreground">{{ $t('download.macos.note') }}</p>
+              </template>
+              <div v-else class="flex flex-1 items-center">
+                <UiButton disabled variant="secondary" class="w-full">
+                  {{ $t('download.coming.soon') }}
+                </UiButton>
+              </div>
+            </UiCardContent>
+          </UiCard>
+
+          <!-- android -->
+          <UiCard class="flex flex-col">
+            <UiCardHeader>
+              <div class="flex items-start justify-between gap-2">
+                <span class="grid size-10 place-items-center rounded-lg bg-muted">
+                  <Smartphone class="size-5" />
+                </span>
+                <UiBadge v-if="recommended === 'android'" variant="secondary">
+                  {{ $t('download.recommended') }}
+                </UiBadge>
+              </div>
+              <UiCardTitle class="mt-4 text-base">{{ $t('download.android') }}</UiCardTitle>
+              <UiCardDescription>{{ $t('download.version', { v: version }) }}</UiCardDescription>
+            </UiCardHeader>
+
+            <UiCardContent class="flex flex-1 flex-col gap-3">
+              <template v-if="androidFiles.length">
+                <div v-for="file in androidFiles" :key="file.name" class="rounded-lg border bg-background/60 p-3">
+                  <div class="flex items-center justify-between gap-2">
+                    <UiBadge variant="outline">{{ fileKind(file.name) }}</UiBadge>
+                    <span class="text-xs text-muted-foreground">
+                      {{ $t('download.size', { size: fileSize(file) }) }}
+                    </span>
+                  </div>
+                  <div class="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span class="shrink-0 font-medium">{{ $t('download.sha') }}</span>
+                    <span class="truncate font-mono">{{ shortHash(file.sha256) }}</span>
+                    <UixCopyable :text="file.sha256" :aria-label="$t('download.sha')" class="size-6 shrink-0 px-0">
+                      <Copy class="size-3.5" />
+                    </UixCopyable>
+                  </div>
+                  <UiButton as-child size="sm" class="mt-3 w-full">
+                    <a :href="file.url" download>
+                      <Download class="size-4" />
+                      {{ fileKind(file.name) }}
+                    </a>
+                  </UiButton>
+                </div>
+                <p class="text-xs text-muted-foreground">{{ $t('download.android.note') }}</p>
               </template>
               <div v-else class="flex flex-1 items-center">
                 <UiButton disabled variant="secondary" class="w-full">

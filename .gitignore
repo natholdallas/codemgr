@@ -16,3 +16,6 @@
 
 # deploy script holds real domains and SSH targets
 /main.sh
+
+# pnpm task state created when running workspace tasks from the repo root
+/node_modules

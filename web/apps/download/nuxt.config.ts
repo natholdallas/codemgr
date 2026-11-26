@@ -58,7 +58,7 @@ export default defineNuxtConfig({
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
         {
           name: 'description',
-          content: 'End-to-end encrypted, offline-first password manager for Linux, Windows and the web.',
+          content: 'End-to-end encrypted, offline-first password manager for Linux, Windows, macOS, Android and the web.',
         },
       ],
       link: [{ rel: 'icon', type: 'image/svg+xml', href: '/icon.svg' }],

@@ -4,7 +4,11 @@
  * them into the download site, and rewrites public/releases.json with fresh
  * checksums.
  *
- * Usage: node scripts/package-desktop.mjs [--skip-build]
+ * Usage: node scripts/package-desktop.mjs [--skip-build] [--from <dir>]...
+ *
+ * `--from` collects the installers downloaded from a GitHub release
+ * (`gh release download`); they take precedence over locally built bundles
+ * with the same file name, so a CI build is what gets published.
  */
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -16,14 +20,22 @@ const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const usrDir = join(root, 'web', 'apps', 'usr')
 const tauriDir = join(usrDir, 'src-tauri')
 const bundleRoot = join(tauriDir, 'target', 'release', 'bundle')
-const bundleDirs = ['appimage', 'deb', 'msi', 'nsis'].map((dir) => join(bundleRoot, dir))
+const bundleDirs = [
+  ...['appimage', 'deb', 'msi', 'nsis', 'dmg'].map((dir) => join(bundleRoot, dir)),
+  join(tauriDir, 'gen', 'android', 'app', 'build', 'outputs', 'apk'),
+]
 const outDir = join(root, 'web', 'apps', 'download', 'public', 'downloads')
 const manifestPath = join(root, 'web', 'apps', 'download', 'public', 'releases.json')
 const tauriConfPath = join(tauriDir, 'tauri.conf.json')
 const WEB_URL = 'https://codemgr.hnath.club'
-const EXTENSIONS = ['.appimage', '.deb', '.msi', '.exe']
+const EXTENSIONS = ['.appimage', '.deb', '.msi', '.exe', '.dmg', '.apk']
 
 const skipBuild = process.argv.includes('--skip-build')
+
+const fromDirs = []
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === '--from' && process.argv[i + 1]) fromDirs.push(resolve(process.argv[i + 1]))
+}
 
 function run(command, args) {
   execFileSync(command, args, {
@@ -50,17 +62,12 @@ function readManifest() {
   }
 }
 
-function scanBundle() {
-  const found = []
-  for (const dir of bundleDirs) {
-    if (!existsSync(dir)) continue
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!entry.isFile()) continue
-      const name = entry.name.toLowerCase()
-      if (EXTENSIONS.some((ext) => name.endsWith(ext))) found.push(join(dir, entry.name))
-    }
-  }
-  return found
+function scanDir(dir) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => join(entry.parentPath ?? entry.path, entry.name))
+    .filter((file) => EXTENSIONS.some((ext) => file.toLowerCase().endsWith(ext)))
 }
 
 function readVersion(fallback) {
@@ -86,13 +93,23 @@ if (!skipBuild) {
 }
 
 const previous = readManifest()
-const installers = scanBundle()
+const installers = [...fromDirs.flatMap(scanDir), ...bundleDirs.flatMap(scanDir)]
+const version = readVersion(previous.version)
+
+// Gradle names the APK after the build type only; give it the product name and
+// version so it matches the desktop artifacts in the download list.
+function destinationName(source) {
+  const name = basename(source)
+  if (name.toLowerCase().endsWith('.apk')) return `Codemgr Vault_${version}_universal.apk`
+  return name
+}
 
 mkdirSync(outDir, { recursive: true })
 
 const files = new Map()
 for (const installer of installers) {
-  const name = basename(installer)
+  const name = destinationName(installer)
+  if (files.has(name)) continue
   const bytes = readFileSync(installer)
   copyFileSync(installer, join(outDir, name))
   files.set(name, {
@@ -110,7 +127,7 @@ for (const entry of previous.files) {
 }
 
 const manifest = {
-  version: readVersion(previous.version),
+  version,
   releasedAt: new Date().toISOString(),
   webUrl: previous.webUrl || WEB_URL,
   files: [...files.values()].sort((a, b) => a.name.localeCompare(b.name)),
