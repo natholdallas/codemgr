@@ -287,7 +287,7 @@ Flags are defined in `internal/conf/flag.go` and dispatched in `internal/flag/fl
 - **Env vars:** `NUXT_PUBLIC_API_BASE` (backend URL), `NUXT_PUBLIC_SITE_URL`, `ENABLE_PWA`, `ENABLE_SEO`
 - **Env files:** `.env` (dev) from `assets/nuxt.env`, `.env.production` (prod) from `assets/nuxt.env.production`, both copied by `./main.sh copyfile`. `deploy` **refuses** to ship a bundle whose `NUXT_PUBLIC_API_BASE` is still `localhost`/`example.com` unless `--allow-placeholder-env` is passed; set the override to `same-origin` for a single-host (reverse-proxied) deployment.
 - **Shared packages:** git submodule at `web/packages/natholdallas` → `https://github.com/natholdallas/nuxt-modules.git`
-- **Test utils:** configured via `.nuxtrc`: `setups.@nuxt/test-utils="4.2.0"` — test with `nuxi test` from app dir
+- **Test utils:** configured via `.nuxtrc`: `setups.@nuxt/test-utils="4.4.0"` — test with `nuxi test` from app dir
 
 ## Shared Nuxt modules (web/packages/natholdallas/)
 

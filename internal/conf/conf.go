@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gofiber/fiber/v3/log"
 	"github.com/natholdallas/natools4go/vipers"
 )
 
@@ -29,6 +30,19 @@ func Validate() {
 			"app.body-limit (%d MB) must be >= resources.media-max-size and resources.media-avatar-max-size",
 			App.BodyLimit,
 		))
+	}
+	// The two audiences are separated only by their signing secret. Sharing one
+	// would let a user token authorize the admin API.
+	if App.SecretAdm == App.SecretUsr {
+		panic("jwt.secret.adm and jwt.secret.usr must differ: a shared secret lets a user token authorize the admin API")
+	}
+	// A deployed instance must not echo system errors back to clients or fall
+	// back to the development CORS allowlist.
+	if App.Debug && App.Nginx {
+		panic("app.debug must be false when app.nginx is true: a deployed instance must not echo system errors or use the dev CORS allowlist")
+	}
+	if App.Swagger && App.Nginx {
+		log.Warn("app.swagger is true while app.nginx is true: the API reference is publicly reachable")
 	}
 }
 

@@ -16,6 +16,6 @@
   "packageManager": "pnpm@12.21.0",
   "dependencies": {
     "@sdk/apiclient": "workspace:^",
-    "prettier": "^3.9.10"
+    "prettier": "^3.10.1"
   }
 }

@@ -73,12 +73,12 @@ func FindAdmin(c fiber.Ctx) error {
 
 type AdminIn struct {
 	Username string `json:"username" validate:"required"`
-	Password string `json:"password" validate:"required,min=4,max=20"`
+	Password string `json:"password" validate:"required,min=8,max=64"`
 } //	@name	AdmAdminIn
 
 type AdminUpdateIn struct {
-	Username string `json:"username" validate:"required"`
-	Password string `json:"password"`
+	Username string `json:"username" validate:"required,min=3,max=50"`
+	Password string `json:"password" validate:"omitempty,min=8,max=64"`
 } //	@name	AdmAdminUpdateIn
 
 func (s *AdminIn) Get() (*db.Admin, error) {
@@ -192,7 +192,7 @@ func RemoveAdmin(c fiber.Ctx) error {
 // TargetPasswordIn carries an optional replacement password. An empty value
 // means "generate a random password".
 type TargetPasswordIn struct {
-	Password string `json:"password" validate:"omitempty,min=4,max=20"`
+	Password string `json:"password" validate:"omitempty,min=8,max=64"`
 } //	@name	AdmTargetPasswordIn
 
 type ResetAdminPasswordOut struct {

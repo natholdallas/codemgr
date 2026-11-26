@@ -33,7 +33,7 @@ func FindProfile(c fiber.Ctx) error {
 }
 
 type ProfileIn struct {
-	Username string `json:"username" validate:"required"`
+	Username string `json:"username" validate:"required,min=3,max=50"`
 } //	@name	AdmProfileIn
 
 // UpdateProfile godoc
@@ -62,8 +62,8 @@ func UpdateProfile(c fiber.Ctx) error {
 }
 
 type ResetPasswordIn struct {
-	Old string `json:"old" validate:"required,min=4,max=50"`
-	New string `json:"new" validate:"required,min=4,max=50"`
+	Old string `json:"old" validate:"required,max=64"`
+	New string `json:"new" validate:"required,min=8,max=64"`
 } //	@name	AdmResetPasswordIn
 
 // ResetPassword godoc

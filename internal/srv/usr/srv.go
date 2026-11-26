@@ -5,13 +5,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/natholdallas/natools4go/fext"
 
-	"codemgr/internal/conf"
+	"codemgr/internal/auth"
 	"codemgr/internal/srv/internal"
 )
 
-var jwt = fext.NewJWT(conf.App.SecretUsr)
+var jwt = auth.Usr
 
 // userKey buckets authenticated rate limits by user ID.
 func userKey(c fiber.Ctx) string {
@@ -35,20 +34,20 @@ func Setup(api fiber.Router) {
 	auth.Post("/logout", Logout)
 	auth.Post("/google", SignInGoogle)
 	auth.Post("/telegram", SignInTelegram)
-	api.Group("/profile", jwt.Middleware).
+	api.Group("/profile", jwt.Middlewares...).
 		Get("/me", FindProfile).
 		Put("/me", UpdateProfile).
-		Put("/password", ResetPassword).
+		Put("/password", internal.RateLimit(userKey, "usr:password", 10, time.Hour), ResetPassword).
 		Post("/avatar", internal.RateLimit(userKey, "usr:avatar", 20, time.Hour), UploadAvatar).
 		Delete("/avatar", DeleteAvatar).
 		Put("/bind/google", BindGoogle).
 		Put("/bind/telegram", BindTelegram).
 		Delete("/bind/:platform", UnbindPlatform)
-	api.Group("/vault", jwt.Middleware).
+	api.Group("/vault", jwt.Middlewares...).
 		Get("", FindVault).
 		Put("", internal.RateLimit(userKey, "usr:vault", 600, time.Hour), SaveVault).
 		Delete("", internal.RateLimit(userKey, "usr:vault-delete", 10, time.Hour), DeleteVault)
-	api.Group("/media", jwt.Middleware).
+	api.Group("/media", jwt.Middlewares...).
 		Get("", ListMedia).
 		Post("", internal.RateLimit(userKey, "usr:media", 30, time.Hour), UploadMedia).
 		Delete("/:id", RemoveMedia)

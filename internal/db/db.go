@@ -15,7 +15,6 @@ import (
 
 var (
 	Tx *gorm.DB
-	Tc context.Context
 	Rx *redis.Client
 	Rc context.Context
 )
@@ -38,7 +37,6 @@ func Connect() {
 	), &gorm.Config{
 		Logger: orms.LogPreset(conf.App.LogWriter(), conf.App.LogLevelGorm),
 	})
-	Tc = context.Background()
 	Rx = redis.NewClient(&redis.Options{
 		Addr: conf.App.RedisAddr,
 		DB:   conf.App.RedisIndex,

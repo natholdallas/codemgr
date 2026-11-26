@@ -6,13 +6,33 @@ import (
 	"fmt"
 	"time"
 
+	jwtware "github.com/gofiber/contrib/v3/jwt"
+	"github.com/gofiber/fiber/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/natholdallas/natools4go/fext"
 	"github.com/natholdallas/natools4go/rands"
+	"github.com/natholdallas/natools4go/strs"
 	"github.com/redis/go-redis/v9"
 
 	"codemgr/internal/conf"
 	"codemgr/internal/db"
+)
+
+// Claims is the JWT claim set of both token kinds. Access and refresh tokens
+// are signed with the same secret, so Typ is the only thing that separates
+// them: without it a long-lived refresh token is also a valid access token.
+type Claims struct {
+	jwt.RegisteredClaims
+	Typ string `json:"typ"`
+}
+
+const (
+	// TokenAccess marks an access token: short-lived, carries the numeric user
+	// ID in ID, and is the only kind the route middleware accepts.
+	TokenAccess = "access"
+	// TokenRefresh marks a refresh token: long-lived, carries the token ID in
+	// ID and the numeric user ID in Subject.
+	TokenRefresh = "refresh"
 )
 
 // Pair is an access token and its matching refresh token.
@@ -27,11 +47,18 @@ type Auth struct {
 	Prefix     string
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration
+	// Middlewares parses the bearer token and rejects everything that is not a
+	// live access token. It replaces the single handler of a plain JWT wrapper:
+	// the signature check alone would let a refresh token through. The element
+	// type is any because fiber.Router.Group takes variadic any.
+	Middlewares []any
 }
 
 // New builds an Auth manager. Prefix (e.g. "adm"/"usr") namespaces the Redis keys.
 func New(secretKey, prefix string, accessTTL, refreshTTL time.Duration) Auth {
-	return Auth{secretKey, prefix, accessTTL, refreshTTL}
+	a := Auth{secretKey, prefix, accessTTL, refreshTTL, nil}
+	a.Middlewares = a.buildMiddlewares()
+	return a
 }
 
 // Usr and Adm are the process-wide token managers. They are built once from
@@ -61,20 +88,89 @@ func (a *Auth) redisUserKey(userID string) string {
 	return fmt.Sprintf("%s:refresh:user:%s", a.Prefix, userID)
 }
 
+// sign serialises claims with HS256 under the audience's secret.
+func (a *Auth) sign(claims *Claims) (string, error) {
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.SecretKey))
+}
+
+// parse verifies a token's signature and returns its claims. Only HMAC
+// signatures are accepted, so an "alg: none" or RSA header cannot be used to
+// bypass verification.
+func (a *Auth) parse(token string) (*Claims, error) {
+	claims := &Claims{}
+	if _, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+		}
+		return []byte(a.SecretKey), nil
+	}); err != nil {
+		return nil, err
+	}
+	return claims, nil
+}
+
+// buildMiddlewares returns the parse-and-verify chain every protected route
+// mounts. A refresh token passes the signature check, so the type marker and
+// the numeric access subject are what actually gate the request.
+func (a *Auth) buildMiddlewares() []any {
+	parse := jwtware.New(jwtware.Config{
+		SigningKey:   jwtware.SigningKey{Key: []byte(a.SecretKey)},
+		ErrorHandler: fext.JWTErrorHandler,
+		Claims:       &Claims{},
+	})
+	guard := func(c fiber.Ctx) error {
+		t := jwtware.FromContext(c)
+		if t == nil {
+			return &fext.Fail{Status: fiber.StatusUnauthorized}
+		}
+		cl, ok := t.Claims.(*Claims)
+		if !ok || cl.Typ != TokenAccess || strs.ParseUint[uint](cl.ID) == 0 {
+			return &fext.Fail{Status: fiber.StatusUnauthorized}
+		}
+		return c.Next()
+	}
+	return []any{parse, guard}
+}
+
+// Claims returns the verified access claims of the request, or nil when the
+// request is not authenticated.
+func (a *Auth) Claims(c fiber.Ctx) *Claims {
+	t := jwtware.FromContext(c)
+	if t == nil {
+		return nil
+	}
+	cl, ok := t.Claims.(*Claims)
+	if !ok {
+		return nil
+	}
+	return cl
+}
+
 // GenPair issues an access token and a refresh token for the given user ID.
 // The refresh token is recorded in Redis so it can be revoked or rotated.
 func (a *Auth) GenPair(userID string) (Pair, error) {
-	access, err := fext.GenToken(userID, a.SecretKey, a.AccessTTL)
+	now := time.Now()
+	access, err := a.sign(&Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(a.AccessTTL)),
+		},
+		Typ: TokenAccess,
+	})
 	if err != nil {
 		return Pair{}, err
 	}
 	jti := rands.Char(32)
-	claims := jwt.RegisteredClaims{
-		ID:        jti,
-		Subject:   userID,
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(a.RefreshTTL)),
-	}
-	refresh, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(a.SecretKey))
+	refresh, err := a.sign(&Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(a.RefreshTTL)),
+		},
+		Typ: TokenRefresh,
+	})
 	if err != nil {
 		return Pair{}, err
 	}
@@ -82,7 +178,7 @@ func (a *Auth) GenPair(userID string) (Pair, error) {
 		return Pair{}, errors.New("redis unavailable")
 	}
 	// A refresh token that is not recorded in Redis can never be redeemed:
-	// VerifyRefresh looks the jti up and treats a miss as revoked. Failing here
+	// ConsumeRefresh looks the jti up and treats a miss as revoked. Failing here
 	// is better than handing the client a token that is dead on arrival.
 	userKey := a.redisUserKey(userID)
 	pipe := db.Rx.TxPipeline()
@@ -95,20 +191,20 @@ func (a *Auth) GenPair(userID string) (Pair, error) {
 	return Pair{access, refresh}, nil
 }
 
-// VerifyRefresh validates a refresh token and returns its user ID.
-// It rejects tokens whose jti has been revoked or is unknown to Redis.
-func (a *Auth) VerifyRefresh(token string) (string, error) {
-	claims, err := fext.ParseToken(token, a.SecretKey)
+// ConsumeRefresh validates a refresh token and atomically burns its jti, so
+// two concurrent replays of the same token can never both mint a new pair.
+func (a *Auth) ConsumeRefresh(token string) (string, error) {
+	claims, err := a.parse(token)
 	if err != nil {
 		return "", err
 	}
-	if claims.ID == "" || claims.Subject == "" {
+	if claims.Typ != TokenRefresh || claims.ID == "" || claims.Subject == "" {
 		return "", errors.New("invalid refresh token")
 	}
 	if db.Rx == nil {
 		return "", errors.New("redis unavailable")
 	}
-	val, err := db.Rx.Get(db.Rc, a.redisKey(claims.ID)).Result()
+	val, err := db.Rx.GetDel(db.Rc, a.redisKey(claims.ID)).Result()
 	if err == redis.Nil {
 		return "", errors.New("refresh token revoked")
 	}
@@ -118,16 +214,19 @@ func (a *Auth) VerifyRefresh(token string) (string, error) {
 	if val != claims.Subject {
 		return "", errors.New("refresh token mismatch")
 	}
+	if _, err := db.Rx.SRem(db.Rc, a.redisUserKey(claims.Subject), claims.ID).Result(); err != nil {
+		return "", err
+	}
 	return claims.Subject, nil
 }
 
 // RevokeRefresh invalidates the given refresh token in Redis.
 func (a *Auth) RevokeRefresh(token string) error {
-	claims, err := fext.ParseToken(token, a.SecretKey)
+	claims, err := a.parse(token)
 	if err != nil {
 		return err
 	}
-	if claims.ID == "" {
+	if claims.Typ != TokenRefresh || claims.ID == "" {
 		return errors.New("invalid refresh token")
 	}
 	if db.Rx == nil {
@@ -162,4 +261,51 @@ func (a *Auth) RevokeAll(userID string) error {
 	pipe.Del(db.Rc, userKey)
 	_, err = pipe.Exec(db.Rc)
 	return err
+}
+
+// refreshCookieName namespaces the cookie per audience so one browser can hold
+// a user and an admin session at once.
+func (a *Auth) refreshCookieName() string {
+	return a.Prefix + "_refresh"
+}
+
+// refreshCookiePath keeps the token off every endpoint except the auth routes.
+func (a *Auth) refreshCookiePath() string {
+	return "/" + a.Prefix + "/api/v1/auth"
+}
+
+// SetRefreshCookie stores the refresh token where JavaScript cannot read it.
+// SameSite=Lax is enough as long as the frontend and the API are on the same
+// registrable domain (main.sh derives both from domains[]); a genuinely
+// cross-site deployment must switch to SameSite=None plus HTTPS.
+func (a *Auth) SetRefreshCookie(c fiber.Ctx, token string) {
+	c.Cookie(&fiber.Cookie{
+		Name:     a.refreshCookieName(),
+		Value:    token,
+		Path:     a.refreshCookiePath(),
+		MaxAge:   int(a.RefreshTTL.Seconds()),
+		Secure:   !conf.App.Debug,
+		HTTPOnly: true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+	})
+}
+
+// ClearRefreshCookie expires the cookie; logout must work even when the token
+// it held was already gone.
+func (a *Auth) ClearRefreshCookie(c fiber.Ctx) {
+	c.Cookie(&fiber.Cookie{
+		Name:     a.refreshCookieName(),
+		Value:    "",
+		Path:     a.refreshCookiePath(),
+		MaxAge:   -1,
+		Expires:  time.Unix(1, 0),
+		Secure:   !conf.App.Debug,
+		HTTPOnly: true,
+		SameSite: fiber.CookieSameSiteLaxMode,
+	})
+}
+
+// RefreshTokenFrom reads the audience's refresh cookie; empty means "no session".
+func (a *Auth) RefreshTokenFrom(c fiber.Ctx) string {
+	return c.Cookies(a.refreshCookieName())
 }

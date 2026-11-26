@@ -41,6 +41,11 @@ var (
 	keyErr  error
 )
 
+// ErrReservedPlaintext is returned when a value handed to EncryptString is
+// not ciphertext but carries the sealed marker. Storing it verbatim would
+// make AfterFind fail on every later read of that row, so it is rejected.
+var ErrReservedPlaintext = errors.New("crypt: plaintext carries the sealed prefix")
+
 // deriveKeys derives the AES and HMAC keys from the configured secret. A
 // missing secret is an error (never a zero key): Validate requires it, but the
 // one-shot scripts must fail loudly instead of silently writing unusable data.
@@ -68,11 +73,21 @@ func IsEncryptedText(s string) bool {
 }
 
 // EncryptString seals a plaintext value with AES-256-GCM. An already sealed
-// value and the empty string are returned unchanged, which makes the GORM
-// hooks safe to run on both fresh and previously sealed structs.
+// value this key can open and the empty string are returned unchanged, which
+// makes the GORM hooks safe to run on both fresh and previously sealed structs.
 func EncryptString(plain string) (string, error) {
-	if plain == "" || IsEncryptedText(plain) {
+	if plain == "" {
 		return plain, nil
+	}
+	if IsEncryptedText(plain) {
+		// Idempotence is required (--db-encrypt re-saves rows, GORM hooks run
+		// on re-save), but only for values this key can actually open. Anything
+		// else is attacker-controlled text that merely imitates the marker and
+		// would poison the row irrecoverably.
+		if _, err := DecryptString(plain); err == nil {
+			return plain, nil
+		}
+		return "", ErrReservedPlaintext
 	}
 	key, _, err := deriveKeys()
 	if err != nil {

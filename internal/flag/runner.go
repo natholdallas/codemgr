@@ -1,6 +1,7 @@
 package flag
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/natholdallas/natools4go/pwd"
 	"github.com/natholdallas/natools4go/rands"
 
+	"codemgr/internal/conf"
 	"codemgr/internal/db"
 )
 
@@ -113,6 +115,11 @@ func readPassword() string {
 }
 
 func Mock() {
+	// The seed writes the well-known admin/123456 pair, so it must never reach a
+	// deployed database.
+	if !conf.App.Debug {
+		fail(errors.New("--mock is only allowed with app.debug = true"))
+	}
 	fmt.Println("database mock script")
 	if err := db.Mock(); err != nil {
 		fail(err)

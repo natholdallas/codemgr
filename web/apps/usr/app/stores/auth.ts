@@ -1,7 +1,7 @@
 import { useLocalStorage } from '@vueuse/core'
 import type { Auth as AuthType } from '~/lib/sdk/models'
 import Apis from '~/lib/sdk'
-import { Auth, RefreshIn } from '~/lib/sdk/models'
+import { Auth } from '~/lib/sdk/models'
 
 let refreshing: Promise<boolean> | null = null
 
@@ -23,20 +23,15 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function $refresh(): Promise<boolean> {
-    const token = auth.value.refreshToken
-    if (!token) {
-      return false
-    }
     if (refreshing) {
       return refreshing
     }
     refreshing = (async () => {
       try {
-        const data = await Apis.Auth.refresh({
-          data: inst(RefreshIn, { refreshToken: token }),
-          meta: { isRefresh: true },
-        })
-        Object.assign(auth.value, { id: data.id, accessToken: data.accessToken, refreshToken: data.refreshToken })
+        // The refresh token itself is an httpOnly cookie the browser attaches
+        // to this call; nothing here can read it.
+        const data = await Apis.Auth.refresh({ meta: { isRefresh: true } })
+        Object.assign(auth.value, { id: data.id, accessToken: data.accessToken })
         return true
       } catch {
         return false
@@ -51,9 +46,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function $signOut() {
     try {
-      if (auth.value.refreshToken) {
-        await Apis.Auth.logout({ data: inst(RefreshIn, { refreshToken: auth.value.refreshToken }) })
-      }
+      // Unconditional: the server clears the cookie and treats "no session" as
+      // success, so signing out of an already-expired session still works.
+      await Apis.Auth.logout()
     } catch {
       // ignore
     }

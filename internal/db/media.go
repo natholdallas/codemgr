@@ -89,8 +89,3 @@ func RemoveByID(tx *gorm.DB, id uint) error {
 func (s *Media) LocalPath() string {
 	return conf.App.RMedia + "/" + s.Path
 }
-
-// OpenFile opens the media file for reading.
-func (s *Media) OpenFile() (*os.File, error) {
-	return os.Open(s.LocalPath())
-}

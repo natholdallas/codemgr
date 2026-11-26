@@ -359,7 +359,11 @@ export const alovaInstance = createAlova({
   baseURL: useRuntimeConfig().public.apiBase,
   cacheFor: null,
   statesHook: VueHook,
-  requestAdapter: adapterFetch(),
+  requestAdapter: adapterFetch({
+    // The refresh token lives in an HttpOnly cookie scoped to /<app>/api/v1/auth,
+    // so cross-origin requests must opt into sending credentials.
+    customFetch: (input, init) => fetch(input, { ...init, credentials: 'include' }),
+  }),
   beforeRequest(method) {
     const { accessToken } = ${authAccessor}()
     if (accessToken) {

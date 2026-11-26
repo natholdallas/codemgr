@@ -21,10 +21,12 @@ import (
 	"codemgr/internal/srv/internal"
 )
 
+// Auth is what a sign-in or refresh success exposes to the browser. The refresh
+// token is deliberately absent: it travels only in an httpOnly cookie, so an
+// XSS bug cannot read it.
 type Auth struct {
-	ID           uint   `json:"id"`
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
+	ID          uint   `json:"id"`
+	AccessToken string `json:"accessToken"`
 } //	@name	UsrAuth
 
 // CodeIn requests a verification code for an email address.
@@ -60,10 +62,6 @@ type EmailCodeIn struct {
 	Code  string `json:"code" validate:"required,len=6"`
 } //	@name	UsrEmailCodeIn
 
-type RefreshIn struct {
-	RefreshToken string `json:"refreshToken" validate:"required"`
-} //	@name	UsrRefreshIn
-
 // normalizeEmail parses and canonicalizes an address. Display-name forms
 // ("Somebody <a@b.c>") are rejected so one account cannot be addressed under
 // several spellings.
@@ -86,7 +84,8 @@ func issueTokens(c fiber.Ctx, id uint) error {
 	if err != nil {
 		return &fext.Fail{Status: fiber.StatusInternalServerError, System: err}
 	}
-	return c.JSON(Auth{ID: id, AccessToken: p.AccessToken, RefreshToken: p.RefreshToken})
+	auth.Usr.SetRefreshCookie(c, p.RefreshToken)
+	return c.JSON(Auth{ID: id, AccessToken: p.AccessToken})
 }
 
 // sendCode emails a verification code; delivery failures are logged, never
@@ -301,53 +300,49 @@ func LoginEmail(c fiber.Ctx) error {
 // Refresh godoc
 //
 //	@Summary		Rotate user tokens
-//	@Description	Exchange a valid refresh token for a new access/refresh pair
+//	@Description	Exchange the refresh cookie for a new access token and a rotated refresh cookie
 //	@Tags			usrAuth
 //	@ID				usrRefresh
-//	@Accept			json
 //	@Produce		json
-//	@Param			body	body		RefreshIn	true	"Refresh token"
-//	@Success		200		{object}	Auth
-//	@Failure		400		{object}	Fail
+//	@Success		200	{object}	Auth
+//	@Failure		401	{object}	Fail
 //	@Router			/usr/api/v1/auth/refresh [post]
 func Refresh(c fiber.Ctx) error {
-	d, err := fext.BodyVarser[RefreshIn](c)
-	if err != nil {
-		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
+	token := auth.Usr.RefreshTokenFrom(c)
+	if token == "" {
+		return &fext.Fail{Status: fiber.StatusUnauthorized, Code: internal.SignInFailed}
 	}
-	userID, err := auth.Usr.VerifyRefresh(d.RefreshToken)
+	userID, err := auth.Usr.ConsumeRefresh(token)
 	if err != nil {
-		return &fext.Fail{Code: internal.SignInFailed, Message: "invalid refresh token"}
-	}
-	if err = auth.Usr.RevokeRefresh(d.RefreshToken); err != nil {
-		log.Warn("revoke refresh token failed: ", err)
+		// The cookie is unusable (revoked, expired, replayed): clear it so the
+		// browser stops resending a dead token on every request.
+		auth.Usr.ClearRefreshCookie(c)
+		return &fext.Fail{Status: fiber.StatusUnauthorized, Code: internal.SignInFailed}
 	}
 	p, err := auth.Usr.GenPair(userID)
 	if err != nil {
 		return &fext.Fail{Status: fiber.StatusInternalServerError, System: err}
 	}
-	return c.JSON(Auth{strs.ParseUint[uint](userID), p.AccessToken, p.RefreshToken})
+	auth.Usr.SetRefreshCookie(c, p.RefreshToken)
+	return c.JSON(Auth{ID: strs.ParseUint[uint](userID), AccessToken: p.AccessToken})
 }
 
 // Logout godoc
 //
 //	@Summary		Revoke user refresh token
-//	@Description	Revoke the given refresh token so it can no longer be used
+//	@Description	Revoke the refresh cookie and clear it. Idempotent: no session is not an error.
 //	@Tags			usrAuth
 //	@ID				usrLogout
-//	@Accept			json
 //	@Produce		json
-//	@Param			body	body	RefreshIn	true	"Refresh token"
 //	@Success		200
-//	@Failure		400	{object}	Fail
 //	@Router			/usr/api/v1/auth/logout [post]
 func Logout(c fiber.Ctx) error {
-	d, err := fext.BodyVarser[RefreshIn](c)
-	if err != nil {
-		return &fext.Fail{Code: internal.InvalidData, Message: err.Error()}
-	}
-	if err := auth.Usr.RevokeRefresh(d.RefreshToken); err != nil {
-		return &fext.Fail{Status: fiber.StatusInternalServerError, System: err}
+	token := auth.Usr.RefreshTokenFrom(c)
+	auth.Usr.ClearRefreshCookie(c)
+	if token != "" {
+		if err := auth.Usr.RevokeRefresh(token); err != nil {
+			log.Warn("revoke refresh token failed: ", err)
+		}
 	}
 	return nil
 }

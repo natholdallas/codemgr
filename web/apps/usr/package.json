@@ -20,35 +20,30 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
-    "@lucide/vue": "^1.41.0",
+    "@lucide/vue": "^1.79.0",
     "@natholdallas/alova": "workspace:^",
     "@natholdallas/i18n": "workspace:^",
     "@natholdallas/infra": "workspace:^",
     "@natholdallas/pinia": "workspace:^",
     "@natholdallas/shadcn": "workspace:^",
     "@natholdallas/tauri": "workspace:^",
-    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/api": "^2.12.5",
     "@tauri-apps/plugin-store": "^2.5.1",
-    "@unovis/vue": "^1.8.1",
     "@vueuse/core": "^14.4.0",
     "clsx": "^2.1.1",
-    "embla-carousel-vue": "^8.6.0",
     "idb-keyval": "^6.3.0",
-    "lodash": "^4.18.1",
     "smol-toml": "^1.9.1",
-    "tailwind-merge": "^3.6.0",
+    "tailwind-merge": "^3.7.1",
     "vue-advanced-cropper": "^2.8.9",
-    "vue-input-otp": "^0.4.0",
     "vue-sonner": "^2.0.9"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.0",
-    "@types/lodash": "^4.17.25",
-    "@types/node": "^26.4.1",
-    "nuxt": "^4.5.2",
+    "@tauri-apps/cli": "^2.12.6",
+    "@types/node": "^26.6.6",
+    "nuxt": "^4.7.0",
     "typescript": "^6.0.3",
-    "vue": "^3.5.42",
-    "vue-router": "^5.3.1",
-    "vue-tsc": "^3.3.11"
+    "vue": "^3.5.46",
+    "vue-router": "^5.5.1",
+    "vue-tsc": "3.3.13"
   }
 }

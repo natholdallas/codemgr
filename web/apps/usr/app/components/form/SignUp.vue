@@ -11,7 +11,11 @@ defineEmits<{
   (e: 'submit'): void
 }>()
 
-const model = defineModel<SignUpIn>({ default: () => inst(SignUpIn) })
+// The confirmation field exists only so the schema can prove both passwords
+// match; the request body is the rest of the model.
+type SignUpForm = SignUpIn & { confirm: string }
+
+const model = defineModel<SignUpForm>({ default: () => ({ ...inst(SignUpIn), confirm: '' }) })
 const schema = toTypedSchema(
   z
     .object({

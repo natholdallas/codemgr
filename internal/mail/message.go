@@ -55,34 +55,6 @@ func (m *Message) SetBodyHTML(html string) *Message {
 	return m
 }
 
-// Attach appends an attachment with the given filename, content type and bytes.
-func (m *Message) Attach(filename, contentType string, body []byte) *Message {
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-	m.parts = append(m.parts, Part{contentType: contentType, filename: filename, body: body})
-	return m
-}
-
-// CC adds carbon-copy recipients.
-func (m *Message) CC(addrs ...string) *Message {
-	m.cc = append(m.cc, addrs...)
-	return m
-}
-
-// BCC adds blind carbon-copy recipients. They receive the mail but are not
-// listed in the headers.
-func (m *Message) BCC(addrs ...string) *Message {
-	m.bcc = append(m.bcc, addrs...)
-	return m
-}
-
-// SetHeader overrides or adds a message header (e.g. "Reply-To").
-func (m *Message) SetHeader(name, value string) *Message {
-	m.headers[name] = value
-	return m
-}
-
 // Recipients returns the union of to, cc and bcc addresses used for the SMTP
 // RCPT command.
 func (m *Message) Recipients() []string {

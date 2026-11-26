@@ -39,6 +39,10 @@ func Setup() {
 	})
 	app.Use(requestid.New())
 	app.Use(cors.New(cors.Config{
+		// The refresh token travels in an httpOnly cookie scoped to the auth
+		// routes, so cross-origin calls must be allowed to send credentials.
+		// Safe because AllowOriginsFunc matches origins exactly, never "*".
+		AllowCredentials: true,
 		AllowOriginsFunc: internal.AllowOriginsFunc,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Request-ID"},

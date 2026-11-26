@@ -27,14 +27,6 @@ func AllowOriginsFunc(origin string) bool {
 	return slices.Contains(conf.App.CorsPrd, origin)
 }
 
-// DebugMiddleware only allows access to the debug mode
-func DebugMiddleware(c fiber.Ctx) error {
-	if conf.App.Debug {
-		return c.Next()
-	}
-	return &fext.Fail{Status: fiber.StatusForbidden}
-}
-
 // NginxMiddleware only allows access to the nginx
 func NginxMiddleware(c fiber.Ctx) bool {
 	return conf.App.Nginx

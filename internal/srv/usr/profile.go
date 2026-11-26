@@ -77,7 +77,7 @@ func FindProfile(c fiber.Ctx) error {
 // avatar is intentionally absent: it is written only by the avatar endpoints,
 // which validate the upload and clean up the previous file.
 type ProfileIn struct {
-	Username string `json:"username" validate:"required,min=4,max=50"`
+	Username string `json:"username" validate:"required,min=3,max=50"`
 } //	@name	UsrProfileIn
 
 // UpdateProfile godoc
@@ -195,8 +195,8 @@ func DeleteAvatar(c fiber.Ctx) error {
 }
 
 type ResetPasswordIn struct {
-	Old string `json:"old" validate:"required,min=4,max=50"`
-	New string `json:"new" validate:"required,min=4,max=50"`
+	Old string `json:"old" validate:"required,max=64"`
+	New string `json:"new" validate:"required,min=8,max=64"`
 } //	@name	UsrResetPasswordIn
 
 // ResetPassword godoc

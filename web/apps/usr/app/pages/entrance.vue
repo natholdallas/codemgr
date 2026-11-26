@@ -42,7 +42,7 @@ const { loading: signingEmail, send: signInEmail } = useRequest(
   },
 ).onSuccess(auth.$signIn)
 
-const signUpForm = ref(inst(SignUpIn))
+const signUpForm = ref<SignUpIn & { confirm: string }>({ ...inst(SignUpIn), confirm: '' })
 const { loading: signingUp, send: signUp } = useRequest(
   () =>
     Apis.Auth.signUp({

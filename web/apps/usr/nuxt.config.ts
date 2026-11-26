@@ -69,14 +69,6 @@ export default defineNuxtConfig({
     '@natholdallas/shadcn',
     '@natholdallas/tauri',
   ],
-  imports: {
-    presets: [
-      {
-        from: 'lodash',
-        imports: ['isArray', 'isEmpty', 'cloneDeep', 'toNumber'],
-      },
-    ],
-  },
 
   app: {
     rootAttrs: { id: 'root' },

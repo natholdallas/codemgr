@@ -16,7 +16,25 @@ import (
 type KeyFunc func(fiber.Ctx) string
 
 // IPKey buckets by client IP, for endpoints that run before authentication.
-func IPKey(c fiber.Ctx) string { return c.IP() }
+//
+// The real peer is authoritative. Only a loopback peer is our own reverse
+// proxy (matching fiber.Config.TrustProxyConfig), and only then is the header
+// read — taking the RIGHTMOST entry, the one the proxy appended, because
+// everything to its left came from the client and is attacker-chosen.
+func IPKey(c fiber.Ctx) string {
+	peer := c.RequestCtx().RemoteIP()
+	if peer == nil {
+		return ""
+	}
+	if !peer.IsLoopback() {
+		return peer.String()
+	}
+	ips := c.IPs()
+	if len(ips) > 0 {
+		return ips[len(ips)-1]
+	}
+	return peer.String()
+}
 
 // limitScript increments and, on the first hit, starts the expiry atomically.
 var limitScript = redis.NewScript(`

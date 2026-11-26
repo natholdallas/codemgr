@@ -74,11 +74,6 @@ func (cl *Client) Send(m *Message) error {
 	return w.Close()
 }
 
-// Reset aborts the current mail transaction without closing the connection.
-func (cl *Client) Reset() error {
-	return cl.c.Reset()
-}
-
 // Close terminates the SMTP session and closes the connection.
 func (cl *Client) Close() error {
 	return cl.c.Quit()

@@ -131,15 +131,6 @@ export default defineNuxtConfig({
     },
   },
 
-  imports: {
-    presets: [
-      {
-        from: 'lodash',
-        imports: ['isArray', 'isEmpty', 'cloneDeep', 'toNumber'],
-      },
-    ],
-  },
-
   app: {
     rootAttrs: { id: 'root' },
     head: {
