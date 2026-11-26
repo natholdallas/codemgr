@@ -62,6 +62,16 @@ jobs:
       - name: Install dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Generate API SDK
+        run: |
+          go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5
+          "$(go env GOPATH)/bin/swag" init --parseDependency --parseInternal
+          rm -f web/apps/*/app/lib/sdk/index.ts
+          pnpm --dir web gen:api
       - name: Build frontend
         working-directory: web
         run: pnpm -F usr generate:tauri
@@ -99,13 +109,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: web/apps/usr/src-tauri -> target
-      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # The preinstalled SDK is enough; android-actions/setup-android@v3 fails on
+      # current runners because it still asks sdkmanager for the removed `tools`
+      # package.
       - name: Install Android SDK packages
-        run: sdkmanager --install "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018"
-      - name: Configure SDK and NDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          TOOLS=$(ls -d "$SDK"/cmdline-tools/*/bin | head -1)
+          yes | "$TOOLS/sdkmanager" --install "platform-tools" "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018"
+          {
+            echo "ANDROID_HOME=$SDK"
+            echo "ANDROID_SDK_ROOT=$SDK"
+            echo "NDK_HOME=$SDK/ndk/27.2.12479018"
+          } >> "$GITHUB_ENV"
       - name: Configure release signing
         env:
           ANDROID_KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
@@ -122,6 +142,12 @@ jobs:
       - name: Install dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
+      - name: Generate API SDK
+        run: |
+          go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5
+          "$(go env GOPATH)/bin/swag" init --parseDependency --parseInternal
+          rm -f web/apps/*/app/lib/sdk/index.ts
+          pnpm --dir web gen:api
       - name: Build frontend
         working-directory: web
         run: pnpm -F usr generate:tauri
